@@ -10,28 +10,59 @@
   - https://developer.twitter.com/en/docs/tweets/search/overview/standard"
   (:require
    [aleph.http :as http]
-   [byte-streams :as bs]))
+   [byte-streams :as bs]
+   [clojure.edn :as edn]))
 
-(def twitter-api-root "https://api.twitter.com/1.1")
+;; credentials in special local-only file for now
+(def twitter-creds (edn/read-string (slurp ".creds.edn")))
+(def twitter-api-root-url "https://api.twitter.com")
+(def twitter-api-url (str twitter-api-root-url "/1.1"))
 
-(defn fetch [path]
-  ;; TODO: catch http exceptions and retrieve response body if applicable
-  @(http/get (str twitter-api-root path))
-  )
+(defn api-url [relative-url]
+  (str twitter-api-url relative-url))
+
+(defn body->string [response]
+  (some-> response :body bs/to-string))
+
+(defn- handle-errors [request-fn]
+  (try
+    (request-fn)
+    (catch clojure.lang.ExceptionInfo e
+      (if-let [response-body (some-> e ex-data body->string)]
+        (throw (ex-info (ex-message e) (-> e ex-data (assoc :body response-body))))
+        (throw e)))))
+
+(defn fetch [handle path]
+  (handle-errors
+   #(@(http/get (api-url path)
+                {:oauth-token (:token handle)}))))
+
+(defn authenticate
+  "Authenticates using consumer's api key and secret
+  and returns authentication handle (token)."
+  [creds]
+  (handle-errors
+   (fn []
+     (let [response-body (:body @(http/post (str twitter-api-root-url "/oauth2/token")
+                                            {:basic-auth [(:api-key creds) (:api-secret creds)]
+                                             :as :json
+                                             :content-type :json
+                                             :query-params {:grant_type "client_credentials"}}))]
+       (if-let [token (:access_token response-body)]
+         {:token token}
+         (throw (ex-info "Unexpected response - missing access token" {:body response-body})))))))
 
 (defn search
   "Given query returns all matching tweets via Twitter API"
-  [query]
-  (fetch "/search/tweets.json")
-  )
+  [handle query]
+  (fetch handle "/search/tweets.json"))
 
 (comment
 
-  (try 
-    (fetch "/search/tweets.json")
-    (catch Exception e
-        (some-> e ex-data :body bs/to-string)))
+  (def my-handle (authenticate twitter-creds))
+
+  (search my-handle "clojure")
 
 
- 
-  )
+;; end of comment
+)
