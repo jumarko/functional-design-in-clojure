@@ -12,7 +12,8 @@
   (:require
    [aleph.http :as http]
    [byte-streams :as bs]
-   [clojure.edn :as edn]))
+   [clojure.edn :as edn]
+   [clojure.spec.alpha :as s]))
 
 ;; credentials in special local-only file for now
 (def twitter-creds (edn/read-string (slurp ".creds.edn")))
@@ -22,8 +23,13 @@
 (defn api-url [relative-url]
   (str twitter-api-url relative-url))
 
+(defn response-body
+  "Returns response body, counts on using `:as :json` in the request map"
+  [response]
+  (some-> response :body))
+
 (defn body->string [response]
-  (some-> response :body bs/to-string))
+  (bs/to-string response))
 
 (defn- handle-errors [request-fn]
   (try
@@ -41,11 +47,13 @@
   ([handle path request-options]
    (handle-errors
     (fn fetch-fn [] 
-      @(http/get (api-url path)
+      (-> (http/get (api-url path)
                  (merge 
                   {:oauth-token (:token handle)
                    :as :json}
-                  request-options))))))
+                  request-options))
+          deref
+          response-body)))))
 
 (defn authenticate
   "Authenticates using consumer's api key and secret
@@ -54,7 +62,7 @@
   [creds]
   (handle-errors
    (fn auth-fn []
-     (let [response-body (:body @(http/post (str twitter-api-root-url "/oauth2/token")
+     (let [response-body (response-body @(http/post (str twitter-api-root-url "/oauth2/token")
                                             {:basic-auth [(:api-key creds) (:api-secret creds)]
                                              :as :json
                                              :content-type :json
@@ -63,11 +71,31 @@
          {:token token}
          (throw (ex-info "Unexpected response - missing access token" {:body response-body})))))))
 
+(s/def :twitter/tweet (s/keys :req [:tweet/id :tweet/text :user/name]))
+
+(defn- raw->tweet [{id :id_str
+                    text :text
+                    {username :name} :user}]
+  {:tweet/id id
+   :tweet/text text
+   :user/name username})
+
+(defn raw->tweets [raw-tweets-data]
+  (->> raw-tweets-data
+      :statuses
+      (map raw->tweet)))
+
+(s/fdef search
+  :args (s/cat :handle map?
+               :query string?)
+  :ret (s/coll-of :twitter/tweet))
 (defn search
   "Given query returns all matching tweets via Twitter API.
   See https://developer.twitter.com/en/docs/tweets/search/api-reference/get-search-tweets.html"
   [handle query]
-  (fetch handle "/search/tweets.json" {:query-params {:q  query}}))
+  (let [raw-tweets (fetch handle "/search/tweets.json" {:query-params {:q  query}})
+        tweets (raw->tweets raw-tweets)]
+    tweets))
 
 (comment
 
