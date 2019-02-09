@@ -4,6 +4,7 @@
   and doesn't guarantee completeness.
 
   We use Aleph as http client: https://github.com/ztellman/aleph
+  - check https://github.com/dakrone/clj-http for supported request map params.
 
   See Twitter docs:
   - https://developer.twitter.com/en/docs/basics/getting-started
@@ -32,17 +33,27 @@
         (throw (ex-info (ex-message e) (-> e ex-data (assoc :body response-body))))
         (throw e)))))
 
-(defn fetch [handle path]
-  (handle-errors
-   #(@(http/get (api-url path)
-                {:oauth-token (:token handle)}))))
+(defn fetch
+  "Fetches data from given api resource (`path`)
+  by using given authentication handle and adding optional extract `request-options`."
+  ([handle path]
+   (fetch handle path {}))
+  ([handle path request-options]
+   (handle-errors
+    (fn fetch-fn [] 
+      @(http/get (api-url path)
+                 (merge 
+                  {:oauth-token (:token handle)
+                   :as :json}
+                  request-options))))))
 
 (defn authenticate
   "Authenticates using consumer's api key and secret
-  and returns authentication handle (token)."
+  and returns authentication handle (token).
+  See https://developer.twitter.com/en/docs/basics/authentication/api-reference/token.html"
   [creds]
   (handle-errors
-   (fn []
+   (fn auth-fn []
      (let [response-body (:body @(http/post (str twitter-api-root-url "/oauth2/token")
                                             {:basic-auth [(:api-key creds) (:api-secret creds)]
                                              :as :json
@@ -53,9 +64,10 @@
          (throw (ex-info "Unexpected response - missing access token" {:body response-body})))))))
 
 (defn search
-  "Given query returns all matching tweets via Twitter API"
+  "Given query returns all matching tweets via Twitter API.
+  See https://developer.twitter.com/en/docs/tweets/search/api-reference/get-search-tweets.html"
   [handle query]
-  (fetch handle "/search/tweets.json"))
+  (fetch handle "/search/tweets.json" {:query-params {:q  query}}))
 
 (comment
 
