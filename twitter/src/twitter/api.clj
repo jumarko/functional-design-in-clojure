@@ -12,11 +12,9 @@
   (:require
    [aleph.http :as http]
    [byte-streams :as bs]
-   [clojure.edn :as edn]
    [clojure.spec.alpha :as s]))
 
 ;; credentials in special local-only file for now
-(def twitter-creds (edn/read-string (slurp ".creds.edn")))
 (def twitter-api-root-url "https://api.twitter.com")
 (def twitter-api-url (str twitter-api-root-url "/1.1"))
 
@@ -99,9 +97,11 @@
 
 (comment
 
+  (def twitter-creds (edn/read-string (slurp ".creds.edn")))
+
   (def my-handle (authenticate twitter-creds))
 
-  (search my-handle "clojure")
+  (time (search my-handle "clojure"))
 
 
 ;; end of comment
