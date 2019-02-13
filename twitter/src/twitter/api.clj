@@ -33,8 +33,8 @@
   (try
     (request-fn)
     (catch clojure.lang.ExceptionInfo e
-      (if-let [response-body (some-> e ex-data body->string)]
-        (throw (ex-info (ex-message e) (-> e ex-data (assoc :body response-body))))
+      (if-let [body-text (some-> e ex-data response-body body->string)]
+        (throw (ex-info (ex-message e) (-> e ex-data (assoc :body body-text))))
         (throw e)))))
 
 (defn fetch
