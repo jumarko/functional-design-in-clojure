@@ -12,7 +12,13 @@
   (:require
    [aleph.http :as http]
    [byte-streams :as bs]
-   [clojure.spec.alpha :as s]))
+   [clojure.spec.alpha :as s])
+  (:import (clojure.lang ExceptionInfo)))
+
+
+(s/def ::credentials (s/keys :req-un [::api-key ::api-secret]))
+(s/def ::auth-state (s/keys ::req-un [::token ::credentials]))
+(s/def ::response-data some?)
 
 ;; credentials in special local-only file for now
 (def twitter-api-root-url "https://api.twitter.com")
@@ -29,45 +35,66 @@
 (defn body->string [response]
   (bs/to-string response))
 
-(defn- handle-errors [request-fn]
+(defn handle-errors [request-fn]
   (try
     (request-fn)
-    (catch clojure.lang.ExceptionInfo e
+    (catch ExceptionInfo e
       (if-let [body-text (some-> e ex-data response-body body->string)]
         (throw (ex-info (ex-message e) (-> e ex-data (assoc :body body-text))))
         (throw e)))))
 
 (defn fetch
   "Fetches data from given api resource (`path`)
-  by using given authentication handle and adding optional extract `request-options`."
-  ([handle path]
-   (fetch handle path {}))
-  ([handle path request-options]
-   (handle-errors
-    (fn fetch-fn [] 
-      (-> (http/get (api-url path)
-                 (merge 
-                  {:oauth-token (:token handle)
-                   :as :json}
-                  request-options))
-          deref
-          response-body)))))
+  by using given authentication state and adding extra `request-options`.
+  This is supposed to be used internally - prefer `fetch-retry-auth` over this function."
+  [auth-state path request-options]
+  (handle-errors
+   (fn fetch-fn [] 
+     (-> (http/get (api-url path)
+                   (merge 
+                    {:oauth-token (:token auth-state)
+                     :as :json}
+                    request-options)) deref
+         response-body))))
 
+(s/fdef authenticate
+  :args (s/cat :credentials ::credentials)
+  :ret ::auth-state)
 (defn authenticate
   "Authenticates using consumer's api key and secret
-  and returns authentication handle (token).
+  and returns authentication auth-state (token).
   See https://developer.twitter.com/en/docs/basics/authentication/api-reference/token.html"
-  [creds]
+  [credentials]
   (handle-errors
    (fn auth-fn []
      (let [response-body (response-body @(http/post (str twitter-api-root-url "/oauth2/token")
-                                            {:basic-auth [(:api-key creds) (:api-secret creds)]
+                                            {:basic-auth [(:api-key credentials) (:api-secret credentials)]
                                              :as :json
                                              :content-type :json
                                              :query-params {:grant_type "client_credentials"}}))]
        (if-let [token (:access_token response-body)]
-         {:token token}
+         {:token token :credentialss credentials}
          (throw (ex-info "Unexpected response - missing access token" {:body response-body})))))))
+
+(s/fdef fetch-retry-auth
+  :args (s/cat :auth-state ::auth-state
+               :path string?
+               :request-options map?)
+  :ret (s/tuple ::auth-state ::response-data))
+(defn fetch-retry-auth
+  "Similar to `fetch` but retries on authentication errors.
+  Gives up after a single retry since that's very likely another issue with the call
+  or permenant authentication error."
+  ;; I guess it wasn't mentioned in the podcast but `:credentials` are necessary
+  ;; to be able to re-authenticate at any point
+  [{:keys [credentials] :as auth-state} path request-options]
+  (try
+    [auth-state (fetch auth-state path request-options)]
+    (catch ExceptionInfo e
+      (println "Got Exception" e)
+      (println "=> Reauthenticating")
+      (let [new-auth-state (authenticate credentials)]
+        [new-auth-state (fetch new-auth-state path request-options)]))))
 
 (s/def :twitter/tweet (s/keys :req [:tweet/id :tweet/text :user/name]))
 
@@ -86,22 +113,23 @@
 (s/fdef search
   :args (s/cat :handle map?
                :query string?)
-  :ret (s/coll-of :twitter/tweet))
+  :ret (s/tuple map? (s/coll-of :twitter/tweet)))
 (defn search
-  "Given query returns all matching tweets via Twitter API.
+  "Finds all matching tweets for given query.
+  Returns a tuple [updated-auth-state tweets].
   See https://developer.twitter.com/en/docs/tweets/search/api-reference/get-search-tweets.html"
-  [handle query]
-  (let [raw-tweets (fetch handle "/search/tweets.json" {:query-params {:q  query}})
+  [auth-state query]
+  (let [[updated-auth-state raw-tweets] (fetch-retry-auth auth-state "/search/tweets.json" {:query-params {:q  query}})
         tweets (raw->tweets raw-tweets)]
-    tweets))
+    [updated-auth-state tweets]))
 
 (comment
 
   (def twitter-creds (edn/read-string (slurp ".creds.edn")))
 
-  (def my-handle (authenticate twitter-creds))
+  (def my-auth-state (authenticate twitter-creds))
 
-  (time (search my-handle "clojure"))
+  (time (search my-auth-state "clojure"))
 
 
 ;; end of comment

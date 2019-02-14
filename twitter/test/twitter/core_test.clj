@@ -4,7 +4,7 @@
 
 (deftest format-tweets
   (testing "no tweets"
-    (is (= ["NO NEW TWEETS!" ]
+    (is (= []
            (c/format-tweets []))))
   (testing "Tweets are properly formatted"
     (is (= [" * Juraj tweeted: 'Check out Clojure - it's cool!'"
