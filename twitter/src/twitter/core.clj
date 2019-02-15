@@ -10,9 +10,9 @@
 (defn- authenticate []
   (api/authenticate twitter-creds))
 
-(defn- search [auth-handle]
+(defn- search [auth-state]
   (try 
-    (api/search auth-handle "#clojure")
+    (api/search auth-state "#clojure")
     (catch Exception e
       ;; TODO: it might be too late to catch data here
       ;; since we would need reponse boy if non-ok HTTP status is thrown
@@ -25,7 +25,7 @@
                                (:user/name tweet)
                                (some-> tweet :tweet/text (clojure.string/replace "\n" " "))))]
     (if (empty? tweets)
-      ["NO NEW TWEETS!"]
+      []
       (mapv format-tweet tweets))))
 
 ;; TODO: use proper cache evicting old entries to prevent out of memory
@@ -41,20 +41,19 @@
 (defn -main
   "I don't do a whole lot ... yet."
   [& args]
-  (let [auth-handle (authenticate)]
-    (loop [seen #{}] ;; `seen` is set of tweet ids
-      (let [tweets (or (search auth-handle)
-                       [])
-            [new-tweets updated-seen] (remove-already-seen-tweets seen tweets)]
-        (run! println (format-tweets new-tweets))
-        (Thread/sleep sleep-time)
-        (recur updated-seen)))))
+  (loop [auth-state (authenticate)
+         seen #{}] ;; `seen` is set of tweet ids
+    (let [[updated-auth-state tweets] (or (search auth-state) [auth-state []])
+         [new-tweets updated-seen] (remove-already-seen-tweets seen tweets)]
+    (run! println (format-tweets new-tweets))
+    (Thread/sleep sleep-time)
+    (recur updated-auth-state updated-seen))))
 
 (comment
-  (def my-creds (api/authenticate twitter-creds))
+  (def my-auth-state (api/authenticate twitter-creds))
 
-  (search my-creds)
+  (search my-auth-state)
 
-  (-main)
+  (def main-future (future (-main)))
 
   )
