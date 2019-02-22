@@ -2,7 +2,8 @@
   (:require
    [clojure.edn :as edn]
    [clojure.repl :refer [pst]]
-   [twitter.api :as api]))
+   [twitter.api :as api]
+   [twitter.server :as server]))
 
 (def twitter-creds (edn/read-string (slurp ".creds.edn")))
 (def sleep-time 15000)
@@ -41,6 +42,7 @@
 (defn -main
   "I don't do a whole lot ... yet."
   [& args]
+  (server/start-server)
   (loop [auth-state (authenticate)
          seen #{}] ;; `seen` is set of tweet ids
     (let [[updated-auth-state tweets] (or (search auth-state) [auth-state []])
