@@ -4,10 +4,20 @@
   Can be started stopped via given methods.
   The HTTP server instance is tracked internally and not exposed to the client."
   (:require [aleph.http :as http]
-            [compojure.core :refer [defroutes GET POST]]))
+            [compojure.core :refer [defroutes GET POST]]
+            [ring.middleware.params :as rparams]))
 
-(defroutes app
-  (GET "/" [] "Search string updated to: <b>TODO</b>"))
+(defn handle-search-query-update [query]
+  (format "Search string updated to: <b>%s</b>" query))
+
+;; Check https://github.com/weavejester/compojure/wiki/Destructuring-Syntax
+;; and https://github.com/ring-clojure/ring/wiki/Parameters
+(defroutes app-routes
+  (GET "/" [q] (handle-search-query-update q)))
+
+(def app
+  (-> app-routes
+      rparams/wrap-params))
 
 (defonce ^:private server (atom nil))
 
@@ -20,7 +30,7 @@
   (stop-server)
   (println "Starting the server...")
   (reset! server
-          (http/start-server app
+          (http/start-server #'app
                              ;; TODO: port should be configurable
                              {:port 8081}))
   (println "Server started.")
