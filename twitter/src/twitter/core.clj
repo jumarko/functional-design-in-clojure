@@ -31,6 +31,7 @@
 
   (def main-future (future (-main)))
 
-  (future-cancel
+  (future-cancel main-future)
 
-   main-future))
+
+  )

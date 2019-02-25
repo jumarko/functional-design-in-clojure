@@ -41,7 +41,8 @@
   and returns a tuple [updated-auth-state updated-seen].
   This is a single step in a never-ending loop."
   [auth-state seen sleep-time]
-  (let [[updated-auth-state tweets] (or (search auth-state) [auth-state []])
+  (let [[updated-auth-state tweets] (or (search auth-state)
+                                        [auth-state []])
         [new-tweets updated-seen] (remove-already-seen-tweets seen tweets)]
     (run! println (format-tweets new-tweets))
     (Thread/sleep sleep-time)
