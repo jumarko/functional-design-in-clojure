@@ -37,14 +37,12 @@
     [new-tweets (apply conj seen (map :tweet/id new-tweets))]))
 
 (defn process-tweets
-  "Gets new tweets, prints them, sleeps for `sleep-time`
-  and returns a tuple [updated-auth-state updated-seen].
+  "Gets new tweets, prints them, and returns a tuple [updated-auth-state updated-seen].
   This is a single step in a never-ending loop."
-  [query auth-state seen sleep-time]
+  [query auth-state seen]
   (let [[updated-auth-state tweets] (or (search auth-state query)
                                         [auth-state []])
         [new-tweets updated-seen] (remove-already-seen-tweets seen tweets)]
     (run! println (format-tweets new-tweets))
-    (Thread/sleep sleep-time)
     [updated-auth-state updated-seen]))
 

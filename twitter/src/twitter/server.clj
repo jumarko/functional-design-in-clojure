@@ -4,19 +4,22 @@
   Can be started stopped via given methods.
   The HTTP server instance is tracked internally and not exposed to the client."
   (:require [aleph.http :as http]
-            [compojure.core :refer [defroutes GET POST]]
+            [clojure.core.async :as async]
+            [compojure.core :refer [defroutes GET POST routes]]
             [ring.middleware.params :as rparams]))
 
-(defn handle-search-query-update [query]
+(defn handle-search-query-update [query-channel query]
+  (async/>!! query-channel query)
   (format "Search string updated to: <b>%s</b>" query))
 
 ;; Check https://github.com/weavejester/compojure/wiki/Destructuring-Syntax
 ;; and https://github.com/ring-clojure/ring/wiki/Parameters
-(defroutes app-routes
-  (GET "/" [q] (handle-search-query-update q)))
 
-(def app
-  (-> app-routes
+(defn- make-app-routes [query-channel]
+  (routes (POST "/" [q] (handle-search-query-update query-channel q))))
+
+(defn- make-app [query-channel]
+  (-> (make-app-routes query-channel)
       rparams/wrap-params))
 
 (defonce ^:private server (atom nil))
@@ -26,17 +29,14 @@
     (println "Stopping the server...")
     (.close @server)))
 
-(defn start-server []
+(defn start-server [query-channel]
   (stop-server)
   (println "Starting the server...")
   (reset! server
-          (http/start-server #'app
+          (http/start-server (make-app query-channel)
                              ;; TODO: port should be configurable
                              {:port 8081}))
-  (println "Server started.")
-  )
-
-
+  (println "Server started."))
 
 (comment
 
@@ -44,4 +44,5 @@
 
   (stop-server)
 
+  ;; end comment
   )
