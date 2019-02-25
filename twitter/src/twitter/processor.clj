@@ -8,9 +8,9 @@
    [clojure.repl :refer [pst]]
    [twitter.api :as api]))
 
-(defn- search [auth-state]
+(defn- search [auth-state query]
   (try
-    (api/search auth-state "#clojure")
+    (api/search auth-state query)
     (catch Exception e
       ;; TODO: it might be too late to catch data here
       ;; since we would need reponse boy if non-ok HTTP status is thrown
@@ -40,8 +40,8 @@
   "Gets new tweets, prints them, sleeps for `sleep-time`
   and returns a tuple [updated-auth-state updated-seen].
   This is a single step in a never-ending loop."
-  [auth-state seen sleep-time]
-  (let [[updated-auth-state tweets] (or (search auth-state)
+  [query auth-state seen sleep-time]
+  (let [[updated-auth-state tweets] (or (search auth-state query)
                                         [auth-state []])
         [new-tweets updated-seen] (remove-already-seen-tweets seen tweets)]
     (run! println (format-tweets new-tweets))

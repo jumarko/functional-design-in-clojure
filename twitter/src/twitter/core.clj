@@ -15,7 +15,7 @@
 (defn twitter-loop []
   (loop [auth-state (authenticate)
          seen #{}] ;; `seen` is set of tweet ids
-    (let [[updated-auth-state updated-seen] (processor/process-tweets auth-state seen sleep-time)]
+    (let [[updated-auth-state updated-seen] (processor/process-tweets "#clojure" auth-state seen sleep-time)]
       (recur updated-auth-state updated-seen))))
 
 (defn -main
@@ -29,7 +29,7 @@
 
   (search my-auth-state)
 
-  (def main-future (future (-main)))
+  (def main-future (future (try (-main) (catch Exception e (println "ERROR: " e)))))
 
   (future-cancel main-future)
 
