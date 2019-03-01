@@ -8,7 +8,8 @@
                  [cheshire "5.8.1"]
                  [org.clojure/core.async "0.4.490"]
                  [ring "1.7.1"]
-                 [compojure "1.6.1"]]
+                 [compojure "1.6.1"]
+                 [com.stuartsierra/component "0.4.0"]]
   :main ^:skip-aot twitter.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}})

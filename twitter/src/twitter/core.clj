@@ -3,54 +3,44 @@
   and searching for matching tweets in pre-defined intervals."
   (:require
    [clojure.core.async :as async]
-   [clojure.edn :as edn]
-   [twitter.api :as api]
-   [twitter.processor :as processor]
+   [com.stuartsierra.component :as component]
+   [twitter.fetcher :as fetcher]
    [twitter.server :as server]))
 
-;; TODO: externalize configuration completely
-(def tweets-fetch-interval 15000)
-(def twitter-creds (edn/read-string (slurp ".creds.edn")))
-
-(defn- authenticate []
-  (api/authenticate twitter-creds))
-
-(defn twitter-loop [query-channel]
-  ;; start with the default search query:
-  (async/>!! query-channel "#clojure")
-
-  (loop [old-query nil
-         auth-state (authenticate)
-         seen #{}] ;; `seen` is set of tweet ids
-    (let [[new-query port] (async/alts!! [query-channel
-                                          (async/timeout tweets-fetch-interval)])
-          query (or new-query old-query)
-          _ (when new-query (println " Got new query: " new-query))
-          [updated-auth-state updated-seen]
-          ;; if timeout happens, keep using the old query
-          ;; otherwise search using the new query got from search-channel
-          (processor/process-tweets query
-                                    auth-state
-                                    ;; tweet cache is emptied if we get a new search query via channel
-                                    (if (= port query-channel) #{} seen))]
-      (recur query updated-auth-state updated-seen))))
+(defn new-system
+  []
+  (component/system-map
+   :query-channel (async/chan 10)
+   :server (component/using (server/new-component) [:query-channel])
+   :fetcher (component/using (fetcher/new-component) [:query-channel])))
 
 (defn -main
   "Runs the main loop polling for tweets."
   [& args]
   ;; TODO: exception handler?
-  (let [query-channel (async/chan 10)]
-    (server/start-server query-channel)
-    (twitter-loop query-channel)))
+  (let [system (component/start (new-system))]
+    system))
+
+;; this is from shownotes: https://clojuredesign.club/episode/010-from-mud-to-bricks/
+;; (defn -main
+;;   [& args]
+;;   (let [system (component/start (new-system))
+;;         lock (promise)
+;;         stop (fn []
+;;                (component/stop system)
+;;                (deliver lock :release))]
+;;     (.addShutdownHook (Runtime/getRuntime) (Thread. stop))
+;;     @lock
+;;     (System/exit 0)))
 
 (comment
   (def my-auth-state (api/authenticate twitter-creds))
 
   (search my-auth-state)
 
-  (def main-future (future (try (-main) (catch Exception e (println "ERROR: " e)))))
+  (def main-system (-main))
 
-  (future-cancel main-future)
+  (component/stop main-system)
 
 
   )

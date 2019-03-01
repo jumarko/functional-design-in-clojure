@@ -3,10 +3,12 @@
   and updating the main thread to take the new query into account.
   Can be started stopped via given methods.
   The HTTP server instance is tracked internally and not exposed to the client."
-  (:require [aleph.http :as http]
-            [clojure.core.async :as async]
-            [compojure.core :refer [defroutes GET POST routes]]
-            [ring.middleware.params :as rparams]))
+  (:require
+   [aleph.http :as http]
+   [clojure.core.async :as async]
+   [com.stuartsierra.component :as component]
+   [compojure.core :refer [defroutes GET POST routes]]
+   [ring.middleware.params :as ring-params]))
 
 (defn handle-search-query-update [query-channel query]
   (async/>!! query-channel query)
@@ -20,23 +22,33 @@
 
 (defn- make-app [query-channel]
   (-> (make-app-routes query-channel)
-      rparams/wrap-params))
+      ring-params/wrap-params))
 
-(defonce ^:private server (atom nil))
-
-(defn stop-server []
-  (when @server
+(defn stop-server [http-server]
+  (when http-server
     (println "Stopping the server...")
-    (.close @server)))
+    (.close http-server)))
 
-(defn start-server [query-channel]
-  (stop-server)
+(defn start-server [port query-channel]
   (println "Starting the server...")
-  (reset! server
-          (http/start-server (make-app query-channel)
-                             ;; TODO: port should be configurable
-                             {:port 8081}))
-  (println "Server started."))
+  (let [server (http/start-server (make-app query-channel)
+                                  {:port port})]
+    (println "Server started.")
+    server))
+
+(defrecord Server [http-server query-channel]
+  component/Lifecycle
+  (start [this]
+    (assoc this :http-server (start-server
+                         ;; TODO: port should be configurable
+                         8081
+                         query-channel)))
+  (stop [this]
+    (stop-server http-server)))
+
+(defn new-component []
+  ;; query-channel injected by the system (see core.clj)
+  (map->Server {}))
 
 (comment
 
