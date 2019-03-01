@@ -73,7 +73,7 @@
                                              :content-type :json
                                              :query-params {:grant_type "client_credentials"}}))]
        (if-let [token (:access_token response-body)]
-         {:token token :credentialss credentials}
+         {:token token :credentials credentials}
          (throw (ex-info "Unexpected response - missing access token" {:body response-body})))))))
 
 (s/fdef fetch-retry-auth

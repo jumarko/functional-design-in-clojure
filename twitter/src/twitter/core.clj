@@ -1,59 +1,56 @@
 (ns twitter.core
+  "Main namespace starting an infinite loop waiting for twitter queries
+  and searching for matching tweets in pre-defined intervals."
   (:require
+   [clojure.core.async :as async]
    [clojure.edn :as edn]
-   [clojure.repl :refer [pst]]
-   [twitter.api :as api]))
+   [twitter.api :as api]
+   [twitter.processor :as processor]
+   [twitter.server :as server]))
 
+;; TODO: externalize configuration completely
+(def tweets-fetch-interval 15000)
 (def twitter-creds (edn/read-string (slurp ".creds.edn")))
-(def sleep-time 15000)
 
 (defn- authenticate []
   (api/authenticate twitter-creds))
 
-(defn- search [auth-state]
-  (try 
-    (api/search auth-state "#clojure")
-    (catch Exception e
-      ;; TODO: it might be too late to catch data here
-      ;; since we would need reponse boy if non-ok HTTP status is thrown
-      ;; => if we don't do that in `twitter.api` ns then http client details will leak
-      (pst e))))
+(defn twitter-loop [query-channel]
+  ;; start with the default search query:
+  (async/>!! query-channel "#clojure")
 
-(defn format-tweets [tweets]
-  (let [format-tweet (fn format-tweet [tweet]
-                       (format " * %s tweeted: '%s'"
-                               (:user/name tweet)
-                               (some-> tweet :tweet/text (clojure.string/replace "\n" " "))))]
-    (if (empty? tweets)
-      []
-      (mapv format-tweet tweets))))
-
-;; TODO: use proper cache evicting old entries to prevent out of memory
-;; Check https://github.com/clojure/core.cache/wiki/Using
-(defn remove-already-seen-tweets [seen tweets]
-  (let [new-tweets (remove (fn [{:tweet/keys [id]}]
-                             (contains? seen id))
-                           tweets)]
-    ;; (prn "DEBUG:: " tweets)
-    ;; (prn "DEBUG:: " new-tweets)
-    [new-tweets (apply conj seen (map :tweet/id new-tweets))]))
+  (loop [old-query nil
+         auth-state (authenticate)
+         seen #{}] ;; `seen` is set of tweet ids
+    (let [[new-query port] (async/alts!! [query-channel
+                                          (async/timeout tweets-fetch-interval)])
+          query (or new-query old-query)
+          _ (when new-query (println " Got new query: " new-query))
+          [updated-auth-state updated-seen]
+          ;; if timeout happens, keep using the old query
+          ;; otherwise search using the new query got from search-channel
+          (processor/process-tweets query
+                                    auth-state
+                                    ;; tweet cache is emptied if we get a new search query via channel
+                                    (if (= port query-channel) #{} seen))]
+      (recur query updated-auth-state updated-seen))))
 
 (defn -main
-  "I don't do a whole lot ... yet."
+  "Runs the main loop polling for tweets."
   [& args]
-  (loop [auth-state (authenticate)
-         seen #{}] ;; `seen` is set of tweet ids
-    (let [[updated-auth-state tweets] (or (search auth-state) [auth-state []])
-         [new-tweets updated-seen] (remove-already-seen-tweets seen tweets)]
-    (run! println (format-tweets new-tweets))
-    (Thread/sleep sleep-time)
-    (recur updated-auth-state updated-seen))))
+  ;; TODO: exception handler?
+  (let [query-channel (async/chan 10)]
+    (server/start-server query-channel)
+    (twitter-loop query-channel)))
 
 (comment
   (def my-auth-state (api/authenticate twitter-creds))
 
   (search my-auth-state)
 
-  (def main-future (future (-main)))
+  (def main-future (future (try (-main) (catch Exception e (println "ERROR: " e)))))
+
+  (future-cancel main-future)
+
 
   )
