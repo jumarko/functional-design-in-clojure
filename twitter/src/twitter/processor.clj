@@ -19,7 +19,7 @@
 
 (defn format-tweets [tweets]
   (let [format-tweet (fn format-tweet [tweet]
-                       (format " * %s tweeted: '%s'"
+                       (format " * %s tweeted:\n      %s"
                                (:user/name tweet)
                                (some-> tweet :tweet/text (clojure.string/replace "\n" " "))))]
     (if (empty? tweets)
