@@ -8,9 +8,9 @@
    [clojure.repl :refer [pst]]
    [twitter.api :as api]))
 
-(defn- search [auth-state query]
+(defn- search [creds query]
   (try
-    (api/search auth-state query)
+    (api/search creds query)
     (catch Exception e
       ;; TODO: it might be too late to catch data here
       ;; since we would need reponse boy if non-ok HTTP status is thrown
@@ -37,12 +37,11 @@
     [new-tweets (apply conj seen (map :tweet/id new-tweets))]))
 
 (defn process-tweets
-  "Gets new tweets, prints them, and returns a tuple [updated-auth-state updated-seen].
+  "Gets new tweets, prints them, and returns `seen` updated with the new tweets.
   This is a single step in a never-ending loop."
-  [query auth-state seen]
-  (let [[updated-auth-state tweets] (or (search auth-state query)
-                                        [auth-state []])
-        [new-tweets updated-seen] (remove-already-seen-tweets seen tweets)]
+  [query creds seen]
+  (let [tweets (or (search creds query)[])
+        [new-tweets updated-seen-tweets] (remove-already-seen-tweets seen tweets)]
     (run! println (format-tweets new-tweets))
-    [updated-auth-state updated-seen]))
+    updated-seen-tweets))
 
