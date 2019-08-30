@@ -7,13 +7,13 @@
     (is (= []
            (p/format-tweets []))))
   (testing "Tweets are properly formatted"
-    (is (= [" * Juraj tweeted: 'Check out Clojure - it's cool!'"
-            " * Joseph tweeted: 'React is cool too!'"]
+    (is (= [" * Juraj tweeted:\n      Check out Clojure - it's cool!"
+            " * Joseph tweeted:\n      React is cool too!"]
            (p/format-tweets [{:user/name "Juraj" :tweet/text "Check out Clojure - it's cool!"}
                              {:user/name "Joseph" :tweet/text "React is cool too!"}
                              ]))))
   (testing "Newline is replaced with space"
-    (is (= [" * Juraj tweeted: 'First tweet line. Second tweet line'"]
+    (is (= [" * Juraj tweeted:\n      First tweet line. Second tweet line"]
            (p/format-tweets [{:user/name "Juraj"
                               :tweet/text "First tweet line.\nSecond tweet line"}])))))
 
