@@ -73,6 +73,8 @@
                     request-options)) deref
          response-body))))
 
+;; TODO: this was an attempt to make a "constructor" but we don't use any matching "selectors"
+;; just :keys destructuring everywhere...
 (defn- make-auth-state [token creds]
   {:token token :credentials creds})
 
