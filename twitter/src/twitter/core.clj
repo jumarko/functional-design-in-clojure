@@ -5,7 +5,8 @@
    [clojure.core.async :as async]
    [com.stuartsierra.component :as component]
    [twitter.fetcher :as fetcher]
-   [twitter.server :as server]))
+   [twitter.server :as server]
+   [twitter.api :as api]))
 
 (defn new-system
   []
@@ -34,9 +35,8 @@
 ;;     (System/exit 0)))
 
 (comment
-  (def my-auth-state (api/authenticate twitter-creds))
 
-  (search my-auth-state)
+  (api/search fetcher/twitter-creds "#clojure")
 
   (def main-system (-main))
 
