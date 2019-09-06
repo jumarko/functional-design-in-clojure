@@ -59,22 +59,3 @@
                  (some-> e ex-data :body))))))
   )
 
-(deftest fetch-retry-auth
-  (testing "fetch-retry-auth should re-authenticate when oauth token expires"
-    (with-redefs [api/fetch (fn [{:keys [token]} path _]
-                              (condp = token
-                                "old" (throw (ex-info "HTTP call error" {:body "bad authentication data"}))
-                                "new" {:user/name "John"}
-                                (throw (ex-info "Unexpected token" {:token token}))))
-                  
-                  api/authenticate (fn [{:keys [api-key api-secret]}]
-                                     (when (and (= "my-key" api-key)
-                                                (= "my-secret" api-secret))
-                                       {:token "new" :credentials {:api-key "my-key" :api-secret "my-secret"}}))]
-      (let [old-auth-state {:token "old"
-                            :credentials {:api-key "my-key" :api-secret "my-secret"}}
-            [updated-auth-state response-data] (api/fetch-retry-auth old-auth-state "/any/path" {})]
-        (is (= (assoc old-auth-state :token "new")
-               updated-auth-state))
-        (is (= response-data
-               {:user/name "John"} response-data))))))
