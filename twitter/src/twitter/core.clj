@@ -1,12 +1,13 @@
 (ns twitter.core
   "Main namespace starting an infinite loop waiting for twitter queries
-  and searching for matching tweets in pre-defined intervals."
+  and searching for matching tweets in pre-defined intervals.
+  NOTE: This is the original core namespace for application developed for episodes 6 - 11.
+  The `twitter.poster.app` ns contains the Twitter Poster app developed for episodes 21 - 27."
   (:require
    [clojure.core.async :as async]
    [com.stuartsierra.component :as component]
    [twitter.fetcher :as fetcher]
-   [twitter.server :as server]
-   [twitter.api :as api]))
+   [twitter.server :as server]))
 
 (defn new-system
   []

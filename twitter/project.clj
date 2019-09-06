@@ -6,10 +6,12 @@
   :dependencies [[org.clojure/clojure "1.10.1"]
                  [aleph "0.4.6"]
                  [cheshire "5.8.1"]
-                 [org.clojure/core.async "0.4.490"]
+                 [org.clojure/core.async "0.4.500"]
                  [ring "1.7.1"]
                  [compojure "1.6.1"]
-                 [com.stuartsierra/component "0.4.0"]]
+                 [com.stuartsierra/component "0.4.0"]
+                 ;; See https://github.com/seancorfield/usermanager-example/blob/master/src/usermanager/model/user_manager.clj
+                 [seancorfield/next.jdbc "1.0.6"]]
   :main ^:skip-aot twitter.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}})
