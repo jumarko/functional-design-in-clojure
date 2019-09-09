@@ -6,14 +6,16 @@
   Stateful HTTP server running on port 8082 and listening for tweets to be scheduled
   via the `/tweets` endpoint (POST).
 
-  You can test the server simply via CURL
-      curl localhost:8082/tweets -d 'TODO: !!!'"
+  You can test with CURL
+     curl -H 'Content-Type: application/json' -X POST -v localhost:8082/tweets -d '{\"text\" : \"My First Tweet\", \"post-at\": \"2019-09-06T11:40:00+02:00\"}'"
+
   (:require
    [aleph.http :as http]
    [clojure.core.async :as async]
    [com.stuartsierra.component :as component]
    [compojure.core :refer [defroutes GET POST routes]]
    [ring.middleware.params :as ring-params]
+   [ring.middleware.json :as ring-json]
    [twitter.poster.db :as db]
    [twitter.poster.twitter-api :as twitter-api]
    [twitter.poster.scheduler :as scheduler]
@@ -33,9 +35,8 @@
 ;; (s/def :tweet/tweet-id string?)
 ;; (s/def :tweet/posted? boolean?)
 
-;; TODO: what's a proper date/time representation?
-;; ZonedDateTime should be fine because what we really want to do is to schedule a tweet to be posted
-;; in user's timezone
+;; ZonedDateTime should be fine as a date/time representation because what we really want to do
+;; is to schedule a tweet to be posted in user's timezone
 (s/def :tweet/post-at (partial instance? java.time.ZonedDateTime))
 
 ;; TODO: attributes like post-at are really specific to scheduling and not shared in all use cases
@@ -46,13 +47,14 @@
                                     :opt [:tweet/db-id
                                           :tweet/tweet-id
                                           :tweet/posted?]))
-;; TODO make this work
 ;; You can test with CURL
-;;   curl -X POST -v localhost:8082/tweets -d '{"text" : "My First Tweet", "post-at": "2019-09-06T11:40:00+02:00}'
-(defn schedule-tweet [tweets-channel {:keys [text post-at] :as _req}]
-  ;; TODO validate tweet
-  ;; where to do coercions such as for `post-at`??
-  (let [transformed-tweet {:tweet/text text
+;;   curl -H 'Content-Type: application/json' -X POST -v localhost:8082/tweets -d '{"text" : "My First Tweet", "post-at": "2019-09-06T11:40:00+02:00"}'
+(defn schedule-tweet [tweets-channel request]
+  ;; TODO validate tweet API request data, especially `post-at`
+  ;; and return 400 if invalid -> should happen before throwing exception by ZonedDateTime/parse
+  ;; spec and conform could be used for this
+  (let [{:keys [text post-at]} (:body request)
+        transformed-tweet {:tweet/text text
                            :tweet/post-at (java.time.ZonedDateTime/parse post-at)}]
     (if-not (s/valid? :tweet/tweet transformed-tweet)
       {:status 400
@@ -70,7 +72,10 @@
 
 (defn- make-app [tweets-channel]
   (-> (make-app-routes tweets-channel)
-      ring-params/wrap-params))
+      ring-params/wrap-params
+      ;; could use `ring-json/wrap-json-params` too: https://github.com/ring-clojure/ring-json
+      (ring-json/wrap-json-body {:keywords? true})
+      ring-json/wrap-json-response))
 
 (defn stop-server [http-server]
   (when http-server
@@ -137,7 +142,7 @@
     ;; java.lang.NoClassDefFoundError: Could not initialize class manifold.deferred.Deferred$fn__10876
   (def my-app (start-app))
   (stop-app my-app)
-  (restart my-app)
+  (def my-app (restart my-app))
 
 
   ;; end comment
