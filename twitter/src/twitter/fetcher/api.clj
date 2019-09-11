@@ -1,4 +1,4 @@
-(ns twitter.api
+(ns twitter.fetcher.api
   "Fetches data from twitter.
   We use standard API which returns tweets only for the past 7 days
   and doesn't guarantee completeness.

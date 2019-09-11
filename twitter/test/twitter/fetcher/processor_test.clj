@@ -1,6 +1,6 @@
-(ns twitter.processor-test
-  (:require [twitter.processor :as p]
-            [clojure.test :refer [deftest is testing]]))
+(ns twitter.fetcher.processor-test
+  (:require [clojure.test :refer [deftest is testing]]
+            [twitter.fetcher.processor :as p]))
 
 (deftest format-tweets
   (testing "no tweets"

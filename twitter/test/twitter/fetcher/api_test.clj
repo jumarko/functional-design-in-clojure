@@ -1,6 +1,6 @@
-(ns twitter.api-test
-  (:require [twitter.api :as api]
-            [clojure.test :refer [deftest is testing]]))
+(ns twitter.fetcher.api-test
+  (:require [clojure.test :refer [deftest is testing]]
+            [twitter.fetcher.api :as api]))
 
 (def raw-statuses
   {:statuses [{:in_reply_to_screen_name nil,

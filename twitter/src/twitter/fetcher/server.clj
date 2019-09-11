@@ -1,4 +1,4 @@
-(ns twitter.server
+(ns twitter.fetcher.server
   "Stateful HTTP server running on port 8081 and listening for search queries on `/search` endpoint (POST)
   and updating the main thread to take the new query into account.
   Can be started stopped via given methods.
