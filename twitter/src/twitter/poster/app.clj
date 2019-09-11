@@ -12,15 +12,17 @@
   (:require
    [aleph.http :as http]
    [clojure.core.async :as async]
+   [clojure.spec.alpha :as s]
    [com.stuartsierra.component :as component]
    [compojure.core :refer [defroutes GET POST routes]]
    [ring.middleware.params :as ring-params]
    [ring.middleware.json :as ring-json]
    [twitter.poster.db :as db]
+   ;; load specs
+   [twitter.poster.spec]
    [twitter.poster.twitter-api :as twitter-api]
    [twitter.poster.scheduler :as scheduler]
-   [twitter.poster.worker :as worker])
-  (:require [clojure.spec.alpha :as s]))
+   [twitter.poster.worker :as worker]))
 
 
 ;;;; Problem: I wanna craft a tweet and schedule it to be posted later.
@@ -28,25 +30,6 @@
 
 ;;; Just specify the content:
 
-;; here I intentionally left out specs for simple attributes which are obvious
-;; to experiment if they would bring some benefits or not
-;; (s/def :tweet/text string?)
-;; (s/def :tweet/db-id long?)
-;; (s/def :tweet/tweet-id string?)
-;; (s/def :tweet/posted? boolean?)
-
-;; ZonedDateTime should be fine as a date/time representation because what we really want to do
-;; is to schedule a tweet to be posted in user's timezone
-(s/def :tweet/post-at (partial instance? java.time.ZonedDateTime))
-
-;; TODO: attributes like post-at are really specific to scheduling and not shared in all use cases
-;; => maybe it should be separated and provided as a different param of `schedule-tweet` fn?
-(s/def :tweet/tweet (s/keys :req [:tweet/text :tweet/post-at]
-                                    ;; IDs and posted? are only filled once the tweet is posted
-                                    ;; TODO: the disinction between db-id and tweet-it looks awkward
-                                    :opt [:tweet/db-id
-                                          :tweet/tweet-id
-                                          :tweet/posted?]))
 ;; You can test with CURL
 ;;   curl -H 'Content-Type: application/json' -X POST -v localhost:8082/tweets -d '{"text" : "My First Tweet", "post-at": "2019-09-06T11:40:00+02:00"}'
 (defn schedule-tweet [tweets-channel request]
@@ -62,6 +45,7 @@
 
       ;; backpressure? - blocking unless there's some space in the buffer??
       ;; TODO: which version of 'put' use?
+      ;; is it ok to block the request when the channel buffer is full? ('backpressure' ?)
       (do (async/>!! tweets-channel transformed-tweet)
           {:status 201
            :body {:status "scheduled"}
@@ -110,13 +94,14 @@
   (component/system-map
    :tweets-channel (async/chan 10) ; tweets scheduled by a user posted on this channel
    :scheduler-channel (async/chan 10) ; scheduler posts 'current time' on this channel every scheduling interval
+   :database (db/make-database)
    :scheduler (component/using
                (scheduler/make-scheduler scheduler-interval-ms) [:scheduler-channel])
    ;; TODO: why this doesn't fail during component/start when I don't pass the required dependencies??
    :server (component/using (make-server server-port) [:tweets-channel])
    :twitter-api (twitter-api/make-twitter-api)
    :worker (component/using
-            (worker/make-worker) [:tweets-channel :scheduler-channel])))
+            (worker/make-worker) [:tweets-channel :scheduler-channel :database])))
 
 (defn start-app []
   ;; TODO config
