@@ -11,7 +11,7 @@
 
   (:require
    [aleph.http :as http]
-   [clojure.core.async :as async]
+   [clojure.core.async :as a]
    [clojure.spec.alpha :as s]
    [com.stuartsierra.component :as component]
    [compojure.core :refer [defroutes GET POST routes]]
@@ -46,7 +46,9 @@
       ;; backpressure? - blocking unless there's some space in the buffer??
       ;; TODO: which version of 'put' use?
       ;; is it ok to block the request when the channel buffer is full? ('backpressure' ?)
-      (do (async/>!! tweets-channel transformed-tweet)
+      ;; Alternatively, we could use non-blocking put inside go and just acknowledge the HTTP POST
+      ;; operation without actually knowing it's finished
+      (do (a/>!! tweets-channel transformed-tweet)
           {:status 201
            :body {:status "scheduled"}
            :headers {"Contet-Type" "application/json"}}))))
@@ -92,8 +94,8 @@
 (defn new-system
   [{:keys [scheduler-interval-ms server-port] :as _config}]
   (component/system-map
-   :tweets-channel (async/chan 10) ; tweets scheduled by a user posted on this channel
-   :scheduler-channel (async/chan 10) ; scheduler posts 'current time' on this channel every scheduling interval
+   :tweets-channel (a/chan 10) ; tweets scheduled by a user posted on this channel
+   :scheduler-channel (a/chan 10) ; scheduler posts 'current time' on this channel every scheduling interval
    :database (db/make-database)
    :scheduler (component/using
                (scheduler/make-scheduler scheduler-interval-ms) [:scheduler-channel])

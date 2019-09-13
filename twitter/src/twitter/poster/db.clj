@@ -6,16 +6,12 @@
             [next.jdbc :as jdbc]
             [next.jdbc.sql :as sql]))
 
-;; TODO:
-;; - perhaps pass `scheduled-tweets-channel` directly here and delete `twitter-db` component?
 
 ;;; database initialization
 
 ;; our database connection and initial data
 ;;
-(def ^:private my-db
-  "SQLite database connection spec."
-  {:dbtype "sqlite" :dbname "usermanager_db"})
+(def ^:private my-db {:dbtype "h2" :dbname "twitter_poster_h2_db"})
 
 ;; TODO these are just examples
 ;; (def ^:private departments
@@ -79,7 +75,8 @@ create table addressbook (
       this ; already initialized
       (let [database (assoc this :datasource (jdbc/get-datasource db-spec))]
         ;; set up database if necessary
-        (populate database (:dbtype db-spec))
+        ;; TODO: don't do this yet (migratus would be better)
+        #_(populate database (:dbtype db-spec))
         database)))
   (stop [this]
     (assoc this :datasource nil))
@@ -91,5 +88,8 @@ create table addressbook (
 
 ;; Note: this is called `setup-database` in Sean's example:
 ;; https://github.com/seancorfield/usermanager-example/blob/master/src/usermanager/model/user_manager.clj#L91
-(defn make-database [] (map->Database {:db-spec my-db}))
+(defn make-database
+  ([] (make-database {:db-spec my-db}))
+  ([db-spec]
+   (map->Database db-spec)))
 
