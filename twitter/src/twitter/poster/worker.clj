@@ -13,14 +13,15 @@
   arguably simple."
   (:require [com.stuartsierra.component :as component]
             [clojure.core.async :as a]
+            [clojure.tools.logging :as log]
             [next.jdbc :as jdbc]
             [next.jdbc.sql :as sql]))
 
 (defn- save-to-db [db {:tweet/keys [text post-at] :as tweet}]
-  (println "saving your tweet" tweet)
+  (log/info "saving your tweet" tweet)
   (let [result (sql/insert! (db) "tweets" {:text text
                                            :post_at (.toOffsetDateTime post-at)})]
-    (println "I saved your tweet: " result)))
+    (log/info "I saved your tweet: " result)))
 
 (defn- persist-tweet [db tweet]
   (save-to-db db tweet))
@@ -43,7 +44,7 @@
 (defn- persist-tweets [db tweets-channel]
   (a/go-loop []
     (let [tweet (a/<! tweets-channel)]
-      (println "got new tweet: " tweet)
+      (log/info "got new tweet: " tweet)
       ;; TODO: persist-tweet operation should be async to avoid blocking core.async thread pool
       ;; is `a/thread` the proper mechanism to use? Check the implementation; does it actually block
       ;;   if the operation returns a non-nil value until it's consumed?!?
@@ -64,7 +65,7 @@
     (let [time-now (a/<! scheduler-channel)
           ;; TODO: should be async IO
           tweets-to-post (select-tweets-for-posting db time-now)]
-      (println "Following tweets selected for posting:" tweets-to-post)
+      (log/info "Following tweets selected for posting:" tweets-to-post)
       (recur))))
 
 ;; TODO: implement

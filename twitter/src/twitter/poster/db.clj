@@ -2,9 +2,11 @@
   "A low-level database component providing db connection for other components.
   Check https://github.com/seancorfield/usermanager-example/blob/master/src/usermanager/model/user_manager.clj"
   (:require [clojure.core.async :as a]
+            [clojure.tools.logging :as log]
             [com.stuartsierra.component :as component]
             [next.jdbc :as jdbc]
-            [next.jdbc.sql :as sql]))
+            [next.jdbc.sql :as sql]
+            [clojure.tools.logging :as log]))
 
 
 ;;; database initialization
@@ -38,11 +40,11 @@ create table tweets (
   text varchar(256),
   post_at timezone with time stamp
 )")])
-    (println "Created database and tweets table!")
+    (log/info "Created database and tweets table!")
     ;; if table creation was successful, it didn't exist before (we could populate it with some data now)
     (catch Exception e
-      (println "Exception:" (ex-message e))
-      (println "Looks like the database is already setup?"))))
+      (log/info "Exception:" (ex-message e))
+      (log/info "Looks like the database is already setup?"))))
 
 ;; See https://github.com/seancorfield/usermanager-example/blob/master/src/usermanager/model/user_manager.clj#L72
 (defrecord Database [db-spec     ; configuration

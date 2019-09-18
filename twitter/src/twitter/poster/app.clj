@@ -40,14 +40,14 @@
 
 (defn stop-server [http-server]
   (when http-server
-    (println "Stopping the server...")
+    (log/info "Stopping the server...")
     (.close http-server)))
 
 (defn start-server [port tweets-channel]
-  (println "Starting the server...")
+  (log/info "Starting the server...")
   (let [server (http/start-server (make-app tweets-channel)
                                   {:port port})]
-    (println "Server started.")
+    (log/info "Server started.")
     server))
 
 ;; TODO: it seems that Server component is frequent enough
@@ -113,8 +113,7 @@
   ;; TODO: check NoClassDefFoundError during startup:
     ;; WARNING: An exception was thrown by aleph.netty$wrap_future$reify__15436.operationComplete()
     ;; java.lang.NoClassDefFoundError: Could not initialize class manifold.deferred.Deferred$fn__10876
-  (def my-app (start-app))
-  (stop-app my-app)
+
   (def my-app (restart my-app))
 
 
