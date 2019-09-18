@@ -12,7 +12,8 @@
                  [com.stuartsierra/component "0.4.0"]
                  ;; See https://github.com/seancorfield/usermanager-example/blob/master/src/usermanager/model/user_manager.clj
                  [seancorfield/next.jdbc "1.0.6"]
-                 [ring/ring-json "0.5.0"]]
+                 [ring/ring-json "0.5.0"]
+                 [com.h2database/h2 "1.4.199"]]
   :main ^:skip-aot twitter.poster.app
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}})

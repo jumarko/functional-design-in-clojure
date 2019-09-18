@@ -1,7 +1,7 @@
 (ns twitter.poster.db
   "A low-level database component providing db connection for other components.
   Check https://github.com/seancorfield/usermanager-example/blob/master/src/usermanager/model/user_manager.clj"
-  (:require [clojure.core.async :as async]
+  (:require [clojure.core.async :as a]
             [com.stuartsierra.component :as component]
             [next.jdbc :as jdbc]
             [next.jdbc.sql :as sql]))
@@ -28,43 +28,21 @@
   database table and populate it. Takes no action if the
   database table already exists."
   [db db-type]
-  (let [auto-key (if (= "sqlite" db-type)
-                   "primary key autoincrement"
-                   (str "generated always as identity"
-                        " (start with 1, increment by 1)"
-                        " primary key"))]
-    (try
-      (jdbc/execute-one! (db)
-                         [(str "
-create table department (
-  id            integer " auto-key ",
-  name          varchar(32)
+  (try
+    (jdbc/execute-one! (db)
+                       ;; notice that TIMESTAMP WITH TIME ZONE actually stores at least the TZ offset unlike postgresql
+                       [(str "
+create table tweets (
+  id            identity not null primary key,
+  tweet_id varchar(128)
+  text varchar(256),
+  post_at timezone with time stamp
 )")])
-      (jdbc/execute-one! (db)
-                         [(str "
-create table addressbook (
-  id            integer " auto-key ",
-  first_name    varchar(32),
-  last_name     varchar(32),
-  email         varchar(64),
-  department_id integer not null
-)")])
-      (println "Created database and addressbook table!")
-      ;; if table creation was successful, it didn't exist before
-      ;; so populate it...
-      (try
-        ;; TODO populate some data? (probably not needed)
-        ;; (doseq [d departments]
-        ;;   (sql/insert! (db) :department {:name d}))
-        ;; (doseq [row initial-user-data]
-        ;;   (sql/insert! (db) :addressbook row))
-        (println "Populated database with initial data!")
-        (catch Exception e
-          (println "Exception:" (ex-message e))
-          (println "Unable to populate the initial data -- proceed with caution!")))
-      (catch Exception e
-        (println "Exception:" (ex-message e))
-        (println "Looks like the database is already setup?")))))
+    (println "Created database and tweets table!")
+    ;; if table creation was successful, it didn't exist before (we could populate it with some data now)
+    (catch Exception e
+      (println "Exception:" (ex-message e))
+      (println "Looks like the database is already setup?"))))
 
 ;; See https://github.com/seancorfield/usermanager-example/blob/master/src/usermanager/model/user_manager.clj#L72
 (defrecord Database [db-spec     ; configuration
@@ -76,7 +54,7 @@ create table addressbook (
       (let [database (assoc this :datasource (jdbc/get-datasource db-spec))]
         ;; set up database if necessary
         ;; TODO: don't do this yet (migratus would be better)
-        #_(populate database (:dbtype db-spec))
+        (populate database (:dbtype db-spec))
         database)))
   (stop [this]
     (assoc this :datasource nil))
