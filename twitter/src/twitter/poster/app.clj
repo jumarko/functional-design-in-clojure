@@ -12,6 +12,7 @@
   (:require
    [aleph.http :as http]
    [clojure.core.async :as a]
+   [clojure.tools.logging :as log]
    [com.stuartsierra.component :as component]
    [ring.middleware.params :as ring-params]
    [ring.middleware.json :as ring-json]
@@ -79,7 +80,18 @@
    :worker (component/using
             (worker/make-worker) [:tweets-channel :scheduler-channel :database])))
 
+(defn- install-uncaught-exception-handler!
+  "Uncaught exception handler is usefula when a thread suddenly dies such as thread
+  spawned inside a go block.
+  Note that this doesn't apply to `future` (use `logging-future+` macro for that)"
+  []
+  (Thread/setDefaultUncaughtExceptionHandler
+   (reify Thread$UncaughtExceptionHandler
+     (uncaughtException [_ thread ex]
+       (log/error ex "Uncaught exception on" (.getName thread))))))
+
 (defn start-app []
+  (install-uncaught-exception-handler!)
   ;; TODO config
   (component/start
    (new-system
