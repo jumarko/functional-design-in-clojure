@@ -21,7 +21,9 @@
                  ;; Note: this is really needed https://logging.apache.org/log4j/2.x/maven-artifacts.html
                  ;; Otherwise you'd get "ERROR StatusLogger No Log4j 2 configuration file found. " 
                  [org.apache.logging.log4j/log4j-api "2.12.1"]
-                 [org.apache.logging.log4j/log4j-core"2.12.1"]]
+                 [org.apache.logging.log4j/log4j-core"2.12.1"]
+                 [walmartlabs/system-viz "0.4.0"]
+                 ]
   :main ^:skip-aot twitter.poster.app
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}})

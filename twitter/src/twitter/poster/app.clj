@@ -14,6 +14,7 @@
    [clojure.core.async :as a]
    [clojure.tools.logging :as log]
    [com.stuartsierra.component :as component]
+   [com.walmartlabs.system-viz :refer [visualize-system]]
    [ring.middleware.params :as ring-params]
    [ring.middleware.json :as ring-json]
    [twitter.poster.db :as db]
@@ -116,6 +117,8 @@
 
   (def my-app (restart my-app))
 
+  ;; visualize the system
+  (visualize-system my-app)
 
   ;; end comment
   )
