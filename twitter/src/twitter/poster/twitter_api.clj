@@ -13,7 +13,9 @@
   (log/info "Posting tweet to twitter: " tweet)
   ;; TODO: replace with actual API call
   (Thread/sleep (+ 500 (rand-int 1000)))
-  (log/info "tweet posted to twitter: " tweet))
+  (let [posted-tweet (assoc tweet :tweet/tweet-id (java.util.UUID/randomUUID))]
+    (log/info "tweet posted to twitter: " posted-tweet)
+    posted-tweet))
 
 (defn- process-tweets [tweets-channel posted-tweets-channel]
   (a/go-loop []
@@ -23,11 +25,14 @@
           (log/info "got tweet to be posted: " tweet)
           (a/thread
             (let [posted-tweet (post-tweet tweet)]
-              (a/>! posted-tweets-channel posted-tweet)))
+              ;; TODO: cannot use a/>! from a/thread
+              ;; but we'd like to avoid blocking current thread if there's nobody on the receiving end
+              ;; => maybe just proper buffer sizes?
+              (a/put! posted-tweets-channel posted-tweet)))
           (recur))
         (log/info "tweets-channel closed. Exit go-loop.")))))
 
-;; TODO: Should this really be a component or is it enough to just use `twitter.api` directly??
+;; TODO: Should this really be a component or is it enough to use `twitter.api` directly??
 ;; can't think of reason why to introduce the full component right now
 ;; maybe the authentiation state (atom) could be handled here!
 ;; 
