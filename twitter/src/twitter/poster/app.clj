@@ -96,7 +96,7 @@
   ;; TODO config
   (component/start
    (new-system
-    {:scheduler-interval-ms 1000
+    {:scheduler-interval-ms 10000
      :server-port 8082})))
 
 (defn stop-app [app]
