@@ -26,11 +26,11 @@
 (defn- persist-tweet [db tweet]
   (save-to-db db tweet))
 
-(defn- persist-tweets [db tweets-channel]
+(defn- persist-tweets [tweets-channel db]
   (a/go-loop []
     (let [tweet (a/<! tweets-channel)]
       (if tweet
-        (do 
+        (do
           (log/info "got new tweet: " tweet)
           ;; TODO: persist-tweet operation should be async to avoid blocking core.async thread pool
           ;; is `a/thread` the proper mechanism to use? Check the implementation; does it actually block
@@ -50,7 +50,10 @@
 order by post_at"
     time-now]))
 
-(defn- post-to-twitter [])
+(defn update-posted-tweet
+  [db posted-tweet]
+  ;; TODO: update tweet in DB (tweet_id and posted_at (column to be added))
+  (log/info "Saving posted tweet to DB: " posted-tweet))
 
 (defn- update-posted-tweets
   "Given external tweet ID of posted tweets, it's now time
@@ -59,34 +62,46 @@ order by post_at"
   TODO: it could happen that the thread doing the API post is actually too slow
   and the next scheduler cycle will come before the DB is updated.
   Shall we take care of that and prevent duplicate tweets to be posted?"
-  []
-  )
+  [posted-tweets-channel db]
+  (a/go-loop []
+    (let [tweet (a/<! posted-tweets-channel)]
+      (if tweet
+        (do
+          (log/info "got posted tweet: " tweet)
+          (a/thread (update-posted-tweet db tweet))
+          (recur))
+        (log/info "posted-tweets-channel closed. Exit go-loop.")))))
 
-(defn handle-process-tweets [db time-now]
+(defn- handle-process-tweets [db time-now]
   (let [tweets-to-post (select-tweets-for-posting db time-now)]
     (log/info "Tweets selected for posting: " tweets-to-post)
-    ))
+    tweets-to-post))
 
-(defn- process-tweets [db scheduler-channel]
+(defn- post-tweets [scheduler-channel db tweets-to-post-channel]
   (a/go-loop []
     (let [time-now (a/<! scheduler-channel)]
       ;; exit the loop if the scheduler-channel has been closed
       (when time-now
-        (a/thread (handle-process-tweets db time-now))
+        (a/thread
+          (let [tweets-to-post (handle-process-tweets db time-now)]
+            ;; don't close the channel, just wait for another scheduler round
+            ;; TODO: what's the difference between using `a/onto-chan`
+            ;; and putting onto a channel manually one-by-one using `a/>!` ?
+            (a/onto-chan tweets-to-post-channel tweets-to-post false)))
         (recur)))))
 
-(defrecord Worker [tweets-channel scheduler-channel database]
+(defrecord Worker [tweets-channel scheduler-channel database tweets-to-post-channel posted-tweets-channel]
   component/Lifecycle
   (start [this]
-    (persist-tweets database tweets-channel)
-    (process-tweets database scheduler-channel)
+    (persist-tweets tweets-channel database)
+    (post-tweets scheduler-channel database tweets-to-post-channel)
+    (update-posted-tweets posted-tweets-channel database)
     this)
   (stop [this]
     this))
 
 (defn make-worker []
   (map->Worker {}))
-
 
 (comment
   (persist-tweet
@@ -102,8 +117,7 @@ order by post_at"
 
   (select-tweets-for-posting
    (:database twitter.poster.app/my-app)
-   (.toInstant (java.time.ZonedDateTime/of 2019 9 6 10 39 0 0 java.time.ZoneOffset/UTC))
-   )
+   (.toInstant (java.time.ZonedDateTime/of 2019 9 6 10 39 0 0 java.time.ZoneOffset/UTC)))
 ;; => [#:TWEETS{:ID 4,
 ;;              :TWEET_ID nil,
 ;;              :TEXT "My First Tweet",

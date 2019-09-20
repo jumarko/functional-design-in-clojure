@@ -72,14 +72,21 @@
   (component/system-map
    :tweets-channel (a/chan 10) ; tweets scheduled by a user posted on this channel
    :scheduler-channel (a/chan 10) ; scheduler posts 'current time' on this channel every scheduling interval
+   :tweets-to-post-channel (a/chan 10) ; tweets to be posted are put here by the worker and picked up by twitter-api
+   :posted-tweets-channel (a/chan 10) ; finally, posted tweets are put here and then processed by worker to update DB data
    :database (db/make-database)
    :scheduler (component/using
-               (scheduler/make-scheduler scheduler-interval-ms) [:scheduler-channel])
+               (scheduler/make-scheduler scheduler-interval-ms)
+               [:scheduler-channel])
    ;; TODO: why this doesn't fail during component/start when I don't pass the required dependencies??
-   :server (component/using (make-server server-port) [:tweets-channel])
-   :twitter-api (twitter-api/make-twitter-api)
+   :server (component/using
+            (make-server server-port)
+            [:tweets-channel])
+   :twitter-api (component/using (twitter-api/make-twitter-api)
+                                 [:tweets-to-post-channel :posted-tweets-channel])
    :worker (component/using
-            (worker/make-worker) [:tweets-channel :scheduler-channel :database])))
+            (worker/make-worker)
+            [:database :tweets-channel :scheduler-channel :tweets-to-post-channel :posted-tweets-channel])))
 
 (defn- install-uncaught-exception-handler!
   "Uncaught exception handler is usefula when a thread suddenly dies such as thread
