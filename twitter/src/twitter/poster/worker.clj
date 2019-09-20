@@ -11,10 +11,10 @@
   - could be split into two separate components: listener for incoming tweets and actual 'Poster'.
   However, this doesn't seem to be necessary right now since the component should still be
   arguably simple."
-  (:require [com.stuartsierra.component :as component]
-            [clojure.core.async :as a]
+  (:require [clojure.core.async :as a]
+            [clojure.set :as set]
             [clojure.tools.logging :as log]
-            [next.jdbc :as jdbc]
+            [com.stuartsierra.component :as component]
             [next.jdbc.sql :as sql]))
 
 (defn- save-to-db [db {:tweet/keys [text post-at] :as tweet}]
@@ -43,12 +43,18 @@
           (recur))
         (log/info "tweets-channel closed. Exit go-loop.")))))
 
+(defn- db-tweet->tweet [db-tweet]
+  (set/rename-keys db-tweet {:TWEETS/ID :tweet/id
+                                     :TWEETS/TWEET_ID :tweet/tweet-id
+                                     :TWEETS/TEXT :tweet/text
+                                     :TWEETS/POST_AT :tweet/post-at
+                                     :TWEETS/POSTED_AT :tweet/posted-at}))
 (defn- select-tweets-for-posting [db time-now]
-  (sql/query
-   (db)
-   ["select * from tweets where tweet_id is NULL and post_at < ?
-order by post_at"
-    time-now]))
+  (let [db-tweets (sql/query
+                  (db)
+                  ["select * from tweets where tweet_id is NULL and post_at < ? order by post_at"
+                   time-now])]
+    (mapv db-tweet->tweet db-tweets)))
 
 (defn update-posted-tweet
   [db posted-tweet]
