@@ -26,49 +26,55 @@
 (defn- persist-tweet [db tweet]
   (save-to-db db tweet))
 
-(comment
-  (persist-tweet
-   (:database twitter.poster.app/my-app)
-   #:tweet{:text "My First Tweet"
-           :post-at (java.time.ZonedDateTime/parse "2019-09-06T11:40:00+02:00")})
-
-  ;; notice that we truly get the timezone from the database (+02:00)
-  ;; it's not just about default java timezone settings
-  (sql/query
-   ((:database twitter.poster.app/my-app))
-   ["select * from tweets order by post_at desc"])
-  ;;
-  )
-
-
 (defn- persist-tweets [db tweets-channel]
   (a/go-loop []
     (let [tweet (a/<! tweets-channel)]
-      (log/info "got new tweet: " tweet)
-      ;; TODO: persist-tweet operation should be async to avoid blocking core.async thread pool
-      ;; is `a/thread` the proper mechanism to use? Check the implementation; does it actually block
-      ;;   if the operation returns a non-nil value until it's consumed?!?
-      ;; Also check this: https://clojureverse.org/t/to-block-or-not-to-block-in-go-blocks/2104/10?u=jumar
-      ;;  - Similarly, you should be very careful with anything that creates a new thread per channel value. ... it throws away backpressure.
-      ;;    ... You should instead spin up a fixed number of threads and let them handle each value as they can. 
-      ;;    => Don't use a/thread inside a go block!?
-      (a/thread (persist-tweet db tweet))
-      (recur))))
+      (if tweet
+        (do 
+          (log/info "got new tweet: " tweet)
+          ;; TODO: persist-tweet operation should be async to avoid blocking core.async thread pool
+          ;; is `a/thread` the proper mechanism to use? Check the implementation; does it actually block
+          ;;   if the operation returns a non-nil value until it's consumed?!?
+          ;; Also check this: https://clojureverse.org/t/to-block-or-not-to-block-in-go-blocks/2104/10?u=jumar
+          ;;  - Similarly, you should be very careful with anything that creates a new thread per channel value. ... it throws away backpressure.
+          ;;    ... You should instead spin up a fixed number of threads and let them handle each value as they can. 
+          ;;    => Don't use a/thread inside a go block!?
+          (a/thread (persist-tweet db tweet))
+          (recur))
+        (log/info "tweets-channel closed. Exit go-loop.")))))
 
 (defn- select-tweets-for-posting [db time-now]
-  [#:tweet{:text "Dummy tweet"
-           :post_at time-now}]
-  #_(sql/query (db) ["select * from tweets"]))
+  (sql/query
+   (db)
+   ["select * from tweets where tweet_id is NULL and post_at < ?
+order by post_at"
+    time-now]))
+
+(defn- post-to-twitter [])
+
+(defn- update-posted-tweets
+  "Given external tweet ID of posted tweets, it's now time
+  to save this data in the DB so they don't get posted again.
+
+  TODO: it could happen that the thread doing the API post is actually too slow
+  and the next scheduler cycle will come before the DB is updated.
+  Shall we take care of that and prevent duplicate tweets to be posted?"
+  []
+  )
+
+(defn handle-process-tweets [db time-now]
+  (let [tweets-to-post (select-tweets-for-posting db time-now)]
+    (log/info "Tweets selected for posting: " tweets-to-post)
+    ))
 
 (defn- process-tweets [db scheduler-channel]
   (a/go-loop []
-    (let [time-now (a/<! scheduler-channel)
-          ;; TODO: should be async IO
-          tweets-to-post (select-tweets-for-posting db time-now)]
-      (log/info "Following tweets selected for posting:" tweets-to-post)
-      (recur))))
+    (let [time-now (a/<! scheduler-channel)]
+      ;; exit the loop if the scheduler-channel has been closed
+      (when time-now
+        (a/thread (handle-process-tweets db time-now))
+        (recur)))))
 
-;; TODO: implement
 (defrecord Worker [tweets-channel scheduler-channel database]
   component/Lifecycle
   (start [this]
@@ -80,3 +86,30 @@
 
 (defn make-worker []
   (map->Worker {}))
+
+
+(comment
+  (persist-tweet
+   (:database twitter.poster.app/my-app)
+   #:tweet{:text "My First Tweet"
+           :post-at (java.time.ZonedDateTime/parse "2019-09-06T11:40:00+02:00")})
+
+  ;; notice that we truly get the timezone from the database (+02:00)
+  ;; it's not just about default java timezone settings
+  (sql/query
+   ((:database twitter.poster.app/my-app))
+   ["select * from tweets order by post_at desc"])
+
+  (select-tweets-for-posting
+   (:database twitter.poster.app/my-app)
+   (.toInstant (java.time.ZonedDateTime/of 2019 9 6 10 39 0 0 java.time.ZoneOffset/UTC))
+   )
+;; => [#:TWEETS{:ID 4,
+;;              :TWEET_ID nil,
+;;              :TEXT "My First Tweet",
+;;              :POST_AT #object[org.h2.api.TimestampWithTimeZone 0x1246964d "2019-09-06 11:40:00+02"]}]  ;;
+
+  ;; 
+  )
+
+
