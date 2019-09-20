@@ -11,6 +11,21 @@
 ;; You can test with CURL
 ;;   curl -H 'Content-Type: application/json' -X POST -v localhost:8082/tweets -d '{"text" : "My First Tweet", "post-at": "2019-09-06T11:40:00+02:00"}'
 
+;; to demonstrate potential Time Zone issues
+(comment
+
+  
+  ;; here we get only offset => problems with day-light saving or timezone changes
+  (.getZone (java.time.ZonedDateTime/parse "2019-09-06T11:40:00+02:00"))
+  ;; => #object[java.time.ZoneOffset 0x75c96f61 "+02:00"]
+
+  ;; here we get full info => should be fine to use but at DB level we only use OffsetDateTime
+  (.getZone (java.time.ZonedDateTime/parse "2019-09-06T11:40:00+02:00[Europe/Paris]"))
+  ;; => #object[java.time.ZoneRegion 0xd234fe4 "Europe/Paris"]
+
+  ;;
+  )
+
 
 (defn- schedule-tweet [tweets-channel request]
   ;; TODO validate tweet API request data, especially `post-at`
@@ -18,6 +33,9 @@
   ;; spec and conform could be used for this
   (let [{:keys [text post-at]} (:body request)
         transformed-tweet {:tweet/text text
+                           ;; Note (maybe TODO ?): although we use ZonedDateTime it's later converted to
+                           ;; OffsetDateTime and thus we actually lose the zone info
+                           ;; which could cause problems because of day-light saving and timezone changes 
                            :tweet/post-at (java.time.ZonedDateTime/parse post-at)}]
     (if-not (s/valid? :tweet/tweet transformed-tweet)
       {:status 400

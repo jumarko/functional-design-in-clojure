@@ -22,6 +22,7 @@
     this
     )
   (stop [this]
+    ;; we can slose the channel here too but it's better close all channels in app.clj (already done)
     (a/close! scheduler-channel)
     this))
 
