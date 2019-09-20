@@ -106,8 +106,14 @@
     {:scheduler-interval-ms 10000
      :server-port 8082})))
 
-(defn stop-app [app]
-  (component/stop app))
+(defn stop-app [{:keys [tweets-channel scheduler-channel tweets-to-post-channel posted-tweets-channel]
+                 :as app}]
+  (when app 
+    (a/close! tweets-channel)
+    (a/close! scheduler-channel)
+    (a/close! tweets-to-post-channel)
+    (a/close! posted-tweets-channel)
+    (component/stop app)))
 
 ;; Check https://github.com/weavejester/compojure/wiki/Destructuring-Syntax
 ;; and https://github.com/ring-clojure/ring/wiki/Parameters
@@ -121,6 +127,8 @@
   ;; TODO: check NoClassDefFoundError during startup:
     ;; WARNING: An exception was thrown by aleph.netty$wrap_future$reify__15436.operationComplete()
     ;; java.lang.NoClassDefFoundError: Could not initialize class manifold.deferred.Deferred$fn__10876
+
+  (def my-app (start-app))
 
   (def my-app (restart my-app))
 
