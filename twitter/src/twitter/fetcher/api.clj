@@ -26,10 +26,12 @@
 ;; this is a map from credentials to oauth tokens
 (defonce ^:private credentials-cache (atom {}))
 
-(defn- cached-auth-state [creds]
+(defn- cached-auth-state
+  [creds]
   (get @credentials-cache creds))
 
-(defn- save-auth-state [{:keys [credentials] :as auth-state}]
+(defn- save-auth-state!
+  [{:keys [credentials] :as auth-state}]
   (swap! credentials-cache assoc credentials auth-state))
 
 (s/def ::credentials (s/keys :req-un [::api-key ::api-secret]))
@@ -57,21 +59,25 @@
         (throw (ex-info (ex-message e) (-> e ex-data (assoc :body body-text))))
         (throw e)))))
 
-(defn fetch
-  "Fetches data from given api resource (`path`)
-  by using given OAuth token and adding extra `request-options`.
-  This is supposed to be used internally - prefer `fetch-retry-auth` over this function."
+(defn api-request
+  "Fetches or posts data from/to given api resource (`path`)
+  by using given OAuth token and adding extra `request-options` which should contain suitable
+  request `:method` (most likely `:get` or `:post`).
+  For POSTs, the `request-options` should contain the `:form-params` param which will be sent
+  as a seralized JSON in the request body.
+  This function is supposed to be used internally - prefer high-level fns like `search` and `post-tweet`
+  if available."
   [auth-token path request-options]
   (handle-errors
-   (fn fetch-fn [] 
-     (-> (http/get (api-url path)
-                   (merge 
-                    {:oauth-token auth-token
-                     :as :json}
-                    request-options))
+   (fn fetch-fn []
+     (-> (http/request (merge
+                        {:url (api-url path)
+                         :oauth-token auth-token
+                         :as :json
+                         :content-type :json}
+                        (assoc-in request-options [:query-params :oauth_token] auth-token)))
          deref
          response-body))))
-
 
 
 ;; TODO: this was an attempt to make a "constructor" but we don't use any matching "selectors"
@@ -86,7 +92,7 @@
   "Authenticates using consumer's api key and secret
   and returns authentication auth-state containing OAuth token.
   Saves new auth-state into authentication cache to be reused and re-authenticated only when necessary.
-  See `save-auth-state`.
+  See `save-auth-state!`.
   See https://developer.twitter.com/en/docs/basics/authentication/api-reference/token.html"
   [credentials]
   (let [new-auth-state
@@ -100,7 +106,8 @@
              (if-let [token (:access_token response-body)]
                (make-auth-state token credentials)
                (throw (ex-info "Unexpected response - missing access token" {:body response-body}))))))]
-    (save-auth-state new-auth-state)))
+    (save-auth-state! new-auth-state)
+    new-auth-state))
 
 (defn- with-retry-auth
   "Calls given `api-fn` with access token retrieved from credentials cache (authenticating if necessary),
@@ -116,14 +123,7 @@
         (let [{:keys [token]} (authenticate! credentials)]
           (api-fn token path request-options))))))
 
-(defn fetch-retry-auth
-  "Similar to `fetch` but retries on authentication errors.
-  Gives up after a single retry since that's very likely another issue with the call
-  or permenant authentication error."
-  ;; I guess it wasn't mentioned in the podcast but `:credentials` are necessary
-  ;; to be able to re-authenticate at any point
-  [creds path request-options]
-  )
+(authenticate! { :api-key "vloWHzR8piUvGYkmPXRilIz6b", :api-secret "a6OtwU6PAMdAyUhK5vtJBTQoVLOK9P7AAzuH81fxL7Q19Un0v2" })
 
 (s/def :twitter/tweet (s/keys :req [:tweet/id :tweet/text :user/name]))
 
@@ -148,9 +148,22 @@
   Reauthenticates automatically if an OAuth token is expired.
   See https://developer.twitter.com/en/docs/tweets/search/api-reference/get-search-tweets.html"
   [creds query]
-  (let [raw-tweets (with-retry-auth creds fetch "/search/tweets.json" {:query-params {:q  query}})
+  (let [raw-tweets (with-retry-auth creds api-request "/search/tweets.json"
+                     {:method :get :query-params {:q  query}})
         tweets (raw->tweets raw-tweets)]
     tweets))
+
+(s/fdef post-tweet
+  :args (s/cat :creds ::credentials
+               :text (s/keys :req-un [:tweet/text]))
+  :ret :twitter/tweet)
+(defn post-tweet
+  "Attempts to post a new tweet with defined text and returns the result"
+  [creds {:keys [tweet/text] :as tweet}]
+  (let [raw-tweet (with-retry-auth creds api-request "/statuses/update.json"
+                    {:method :post :form-params {:status text}})
+        posted-tweet (raw->tweet raw-tweet)]
+    posted-tweet))
 
 (comment
 
