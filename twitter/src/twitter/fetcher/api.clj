@@ -36,12 +36,10 @@
 (s/def ::auth-state (s/keys ::req-un [::token ::credentials]))
 (s/def ::response-data some?)
 
-;; credentials in special local-only file for now
-(def twitter-api-root-url "https://api.twitter.com")
-(def twitter-api-url (str twitter-api-root-url "/1.1"))
+(def ^:dynamic twitter-api-root-url "https://api.twitter.com")
 
 (defn api-url [relative-url]
-  (str twitter-api-url relative-url))
+  (str twitter-api-root-url "/1.1" relative-url))
 
 (defn response-body
   "Returns response body, counts on using `:as :json` in the request map"
@@ -70,8 +68,11 @@
                    (merge 
                     {:oauth-token auth-token
                      :as :json}
-                    request-options)) deref
+                    request-options))
+         deref
          response-body))))
+
+
 
 ;; TODO: this was an attempt to make a "constructor" but we don't use any matching "selectors"
 ;; just :keys destructuring everywhere...
@@ -101,11 +102,20 @@
                (throw (ex-info "Unexpected response - missing access token" {:body response-body}))))))]
     (save-auth-state new-auth-state)))
 
-(s/fdef fetch-retry-auth
-  :args (s/cat :auth-state ::auth-state
-               :path string?
-               :request-options map?)
-  :ret ::response-data)
+(defn- with-retry-auth
+  "Calls given `api-fn` with access token retrieved from credentials cache (authenticating if necessary),
+  `path`, and `request-options`.
+  Re-authenticates if the call fails to make sure expired access token doesn't break the functionality."
+  [creds api-fn path request-options]
+  (let [{:keys [token credentials]} (or (cached-auth-state creds) (authenticate! creds))]
+    (try
+      (api-fn token path request-options)
+      (catch ExceptionInfo e
+        (println "Got Exception" e)
+        (println "=> Reauthenticating")
+        (let [{:keys [token]} (authenticate! credentials)]
+          (api-fn token path request-options))))))
+
 (defn fetch-retry-auth
   "Similar to `fetch` but retries on authentication errors.
   Gives up after a single retry since that's very likely another issue with the call
@@ -113,14 +123,7 @@
   ;; I guess it wasn't mentioned in the podcast but `:credentials` are necessary
   ;; to be able to re-authenticate at any point
   [creds path request-options]
-  (let [{:keys [token credentials]} (or (cached-auth-state creds) (authenticate! creds))]
-    (try
-      (fetch token path request-options)
-      (catch ExceptionInfo e
-        (println "Got Exception" e)
-        (println "=> Reauthenticating")
-        (let [{:keys [token]} (authenticate! credentials)]
-          (fetch token path request-options))))))
+  )
 
 (s/def :twitter/tweet (s/keys :req [:tweet/id :tweet/text :user/name]))
 
@@ -145,17 +148,15 @@
   Reauthenticates automatically if an OAuth token is expired.
   See https://developer.twitter.com/en/docs/tweets/search/api-reference/get-search-tweets.html"
   [creds query]
-  (let [raw-tweets (fetch-retry-auth creds "/search/tweets.json" {:query-params {:q  query}})
+  (let [raw-tweets (with-retry-auth creds fetch "/search/tweets.json" {:query-params {:q  query}})
         tweets (raw->tweets raw-tweets)]
     tweets))
 
 (comment
 
-  (def twitter-creds (edn/read-string (slurp ".creds.edn")))
+  (def twitter-creds (clojure.edn/read-string (slurp ".creds.edn")))
 
-  (def my-auth-state (authenticate! twitter-creds))
-
-  (time (search my-auth-state "clojure"))
+  (time (search twitter-creds "clojure"))
 
 
 ;; end of comment
