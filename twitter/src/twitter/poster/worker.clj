@@ -57,9 +57,15 @@
     (mapv db-tweet->tweet db-tweets)))
 
 (defn update-posted-tweet
-  [db posted-tweet]
+  [db {:tweet/keys [id tweet-id posted-at] :as posted-tweet}]
   ;; TODO: update tweet in DB (tweet_id and posted_at (column to be added))
-  (log/info "Saving posted tweet to DB: " posted-tweet))
+  (log/info "Saving posted tweet to DB: " posted-tweet)
+  (let [result (sql/update! (db)
+                            "tweets"
+                            {:tweet_id tweet-id
+                             :posted_at posted-at}
+                            {:id id})]
+    (log/info "Tweet updated: " result)))
 
 (defn- update-posted-tweets
   "Given external tweet ID of posted tweets, it's now time
@@ -128,6 +134,12 @@
 ;;              :TWEET_ID nil,
 ;;              :TEXT "My First Tweet",
 ;;              :POST_AT #object[org.h2.api.TimestampWithTimeZone 0x1246964d "2019-09-06 11:40:00+02"]}]  ;;
+
+
+  ;; DELETE ALL DATA IF YOU WANT!
+  (next.jdbc/execute!
+   ((:database twitter.poster.app/my-app))
+   ["delete from tweets"])
 
   ;; 
   )

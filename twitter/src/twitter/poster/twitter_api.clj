@@ -13,7 +13,9 @@
   (log/info "Posting tweet to twitter: " tweet)
   ;; TODO: replace with actual API call
   (Thread/sleep (+ 500 (rand-int 1000)))
-  (let [posted-tweet (assoc tweet :tweet/tweet-id (java.util.UUID/randomUUID))]
+  (let [posted-tweet (assoc tweet
+                            :tweet/tweet-id (java.util.UUID/randomUUID)
+                            :tweet/posted-at (java.time.Instant/now))]
     (log/info "tweet posted to twitter: " posted-tweet)
     posted-tweet))
 

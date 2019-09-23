@@ -35,10 +35,11 @@
                        ;; notice that TIMESTAMP WITH TIME ZONE actually stores at least the TZ offset unlike postgresql
                        [(str "
 create table tweets (
-  id            identity not null primary key,
-  tweet_id varchar(128)
+  id identity not null primary key,
+  tweet_id varchar(128),
   text varchar(256),
-  post_at timezone with time stamp
+  post_at timestamp with time zone,
+  posted_at timestamp
 )")])
     (log/info "Created database and tweets table!")
     ;; if table creation was successful, it didn't exist before (we could populate it with some data now)
