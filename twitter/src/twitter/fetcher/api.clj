@@ -11,12 +11,27 @@
   and thus the client only needs to pass credentials (api key).
   This simplified the API and clients don't need to maintain authentication state at all.
 
+  Application-only vs Application-user authentication:
+  ---------------------------------------------------
+  See https://developer.twitter.com/en/docs/basics/authentication/overview/oauth
+
+  The problem with Twitter API is that using the simplified OAuth 2 authentication
+  (that is getting an OAuth token by posting to /oauth2/token endpoint)
+  the retrieved access token can be used only for read-only access to public information.
+
+  If you want to execute actions on behalf of a user (such as 'posting tweets')
+  you need to use 3-ledged-OAuth process: https://developer.twitter.com/en/docs/basics/authentication/overview/3-legged-oauth
+  THEREFORE, WE DON'T TRY TO IMPLEMENT IT -> we use https://github.com/chbrown/twttr instead.
+  This is done in twitter_api.clj, not this ns which is intended only for _fetching_.
+
+
   We use Aleph as http client: https://github.com/ztellman/aleph
   - check https://github.com/dakrone/clj-http for supported request map params.
 
   See Twitter docs:
   - https://developer.twitter.com/en/docs/basics/getting-started
-  - https://developer.twitter.com/en/docs/tweets/search/overview/standard"
+  - https://developer.twitter.com/en/docs/tweets/search/overview/standard
+  - Authentication: https://developer.twitter.com/en/docs/basics/authentication/overview/oauth"
   (:require
    [aleph.http :as http]
    [byte-streams :as bs]
@@ -75,7 +90,7 @@
                          :oauth-token auth-token
                          :as :json
                          :content-type :json}
-                        (assoc-in request-options [:query-params :oauth_token] auth-token)))
+                        request-options))
          deref
          response-body))))
 
@@ -152,18 +167,6 @@
                      {:method :get :query-params {:q  query}})
         tweets (raw->tweets raw-tweets)]
     tweets))
-
-(s/fdef post-tweet
-  :args (s/cat :creds ::credentials
-               :text (s/keys :req-un [:tweet/text]))
-  :ret :twitter/tweet)
-(defn post-tweet
-  "Attempts to post a new tweet with defined text and returns the result"
-  [creds {:keys [tweet/text] :as tweet}]
-  (let [raw-tweet (with-retry-auth creds api-request "/statuses/update.json"
-                    {:method :post :form-params {:status text}})
-        posted-tweet (raw->tweet raw-tweet)]
-    posted-tweet))
 
 (comment
 
