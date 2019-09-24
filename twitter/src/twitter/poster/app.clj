@@ -8,23 +8,19 @@
 
   You can test with CURL
      curl -H 'Content-Type: application/json' -X POST -v localhost:8082/tweets -d '{\"text\" : \"My First Tweet\", \"post-at\": \"2019-09-06T11:40:00+02:00\"}'"
-
-  (:require
-   [aleph.http :as http]
-   [clojure.core.async :as a]
-   [clojure.tools.logging :as log]
-   [com.stuartsierra.component :as component]
-   [com.walmartlabs.system-viz :refer [visualize-system]]
-   [ring.middleware.params :as ring-params]
-   [ring.middleware.json :as ring-json]
-   [twitter.poster.db :as db]
-   [twitter.poster.routes :as routes]
-   ;; load specs
-   [twitter.poster.spec]
-   [twitter.poster.twitter-api :as twitter-api]
-   [twitter.poster.scheduler :as scheduler]
-   [twitter.poster.worker :as worker]))
-
+  (:require [aleph.http :as http]
+            [clojure.core.async :as a]
+            [clojure.edn :as edn]
+            [clojure.tools.logging :as log]
+            [com.stuartsierra.component :as component]
+            [com.walmartlabs.system-viz :refer [visualize-system]]
+            [ring.middleware.json :as ring-json]
+            [ring.middleware.params :as ring-params]
+            [twitter.poster.db :as db]
+            [twitter.poster.routes :as routes]
+            [twitter.poster.scheduler :as scheduler]
+            [twitter.poster.twitter-api :as twitter-api]
+            [twitter.poster.worker :as worker]))
 
 ;;;; Problem: I wanna craft a tweet and schedule it to be posted later.
 ;;;;
@@ -68,7 +64,7 @@
   (map->Server {:port port}))
 
 (defn new-system
-  [{:keys [scheduler-interval-ms server-port] :as _config}]
+  [{:keys [scheduler-interval-ms server-port] :as config}]
   (component/system-map
    :tweets-channel (a/chan 10) ; tweets scheduled by a user posted on this channel
    :scheduler-channel (a/chan 10) ; scheduler posts 'current time' on this channel every scheduling interval
@@ -82,7 +78,7 @@
    :server (component/using
             (make-server server-port)
             [:tweets-channel])
-   :twitter-api (component/using (twitter-api/make-twitter-api)
+   :twitter-api (component/using (twitter-api/make-twitter-api config)
                                  [:tweets-to-post-channel :posted-tweets-channel])
    :worker (component/using
             (worker/make-worker)
@@ -103,8 +99,10 @@
   ;; TODO config
   (component/start
    (new-system
-    {:scheduler-interval-ms 10000
-     :server-port 8082})))
+    (merge
+     {:scheduler-interval-ms 10000
+      :server-port 8082}
+     (edn/read-string (slurp ".creds.edn"))))))
 
 (defn stop-app [{:keys [tweets-channel scheduler-channel tweets-to-post-channel posted-tweets-channel]
                  :as app}]

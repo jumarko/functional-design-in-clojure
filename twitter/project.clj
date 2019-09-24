@@ -24,6 +24,10 @@
                  [org.apache.logging.log4j/log4j-core"2.12.1"]
                  ;; visualize components of your system - handy for arch. diagrams?
                  [walmartlabs/system-viz "0.4.0"]
+
+                 ;; external library for talking to twitter
+                 ;; so we don't need to implement complex authentication worfklow ourselves
+                 [twttr "3.2.2"]
                  ]
   :main ^:skip-aot twitter.poster.app
   :target-path "target/%s"
