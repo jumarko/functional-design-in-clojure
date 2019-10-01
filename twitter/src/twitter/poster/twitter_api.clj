@@ -9,6 +9,11 @@
             [twttr.auth :as auth]
             [clojure.spec.alpha :as s]))
 
+(defprotocol TwitterApiPoster
+  "A simple protocol for posting tweets via Twitter API.
+  Used also for faking the real twitter API in integration tests - see `twitter.poster.app-test`."
+  (post-tweet [this status-text] "Posts given tweet using provided credentials to authenticate against the API."))
+
 ;; https://github.com/chbrown/twttr#example
 (s/def ::twitter-creds (s/keys :req-un [::consumer-key ::consumer-secret ::user-token ::user-token-secret]))
 (s/fdef twitter-creds
@@ -24,13 +29,12 @@
 ;; In particular, "Status is a duplicate" is an interesting error response:
 ;;   :status 403,
 ;;   :body {:errors [{:code 187, :message "Status is a duplicate."}]}}
-(s/fdef post-tweet
+(s/fdef process-tweet
   :args (s/cat :config ::twitter-creds :tweet :tweet/tweet))
-(defn- post-tweet [config {:tweet/keys [id text] :as tweet}]
+(defn- process-tweet [api-poster {:tweet/keys [id text] :as tweet}]
   (log/info "Posting tweet to twitter: " tweet)
   (try
-    (let [raw-tweet-data (api/statuses-update (twitter-creds config)
-                                              :params {:status text})
+    (let [raw-tweet-data (post-tweet api-poster text)
           ;; _ (prn "DEBUG:: raw-tweet-data " raw-tweet-data)
           posted-tweet (assoc tweet
                               :tweet/tweet-id (:id_str raw-tweet-data)
@@ -49,31 +53,36 @@
           ;; just rethrow and try again later
           (throw e))))))
 
-;; Perhaps place into "Fake" component used for development/testing?
-(defn- post-tweet-dummy [config tweet]
-  (log/info "Posting tweet to twitter: " tweet)
-  ;; TODO: replace with actual API call
-  (Thread/sleep (+ 500 (rand-int 1000)))
-  (let [posted-tweet (assoc tweet
-                            :tweet/tweet-id (java.util.UUID/randomUUID)
-                            :tweet/posted-at (java.time.Instant/now))]
-    (log/info "tweet posted to twitter: " posted-tweet)
-    posted-tweet))
-
-(defn- process-tweets [config tweets-channel posted-tweets-channel]
+(defn- process-tweets [api-poster tweets-channel posted-tweets-channel]
   (a/go-loop []
     (let [tweet (a/<! tweets-channel)]
       (if tweet
         (do 
           (log/info "got tweet to be posted: " tweet)
           (a/thread
-            (let [posted-tweet (post-tweet config tweet)]
+            (let [posted-tweet (process-tweet api-poster tweet)]
               ;; TODO: cannot use a/>! from a/thread
               ;; but we'd like to avoid blocking current thread if there's nobody on the receiving end
               ;; => maybe just proper buffer sizes?
               (a/put! posted-tweets-channel posted-tweet)))
           (recur))
         (log/info "tweets-channel closed. Exit go-loop.")))))
+
+(defn- twttr-post-tweet [creds status-text]
+  (api/statuses-update creds :params {:status status-text}))
+
+;;; Implementation of `TwitterApiPoster` using `twttr.api`
+;;; This is the real impl used for posting live tweets
+(defrecord TwttrApiPoster [credentials]
+  TwitterApiPoster
+  (post-tweet [this status-text]
+    (twttr-post-tweet credentials status-text))
+  component/Lifecycle
+  (start [this] this)
+  (stop [this] this))
+
+(defn make-twitter-api-poster [config]
+  (map->TwttrApiPoster {:credentials (twitter-creds config)}))
 
 ;; TODO: Should this really be a component or is it enough to use `twttr.api` directly??
 ;; can't think of reason why to introduce the full component right now
@@ -88,16 +97,16 @@
 ;; MAYBE just make it a component but don't try to introduce extra channels
 ;; but actually use a protocol for TwitterApi?
 ;; (But this could be a classic example of a protocol growing every time we need a new operation)
-(defrecord TwitterApi [config tweets-to-post-channel posted-tweets-channel]
+(defrecord TwitterApi [tweets-to-post-channel posted-tweets-channel twitter-api-poster]
   component/Lifecycle
   (start [this]
-    (process-tweets config tweets-to-post-channel posted-tweets-channel)
+    (process-tweets twitter-api-poster tweets-to-post-channel posted-tweets-channel)
     this)
   (stop [this]
     this))
 
-(defn make-twitter-api [config]
-  (map->TwitterApi {:config config}))
+(defn make-twitter-api []
+  (map->TwitterApi {}))
 
 
 (comment

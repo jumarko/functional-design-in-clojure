@@ -78,8 +78,10 @@
    :server (component/using
             (make-server server-port)
             [:tweets-channel])
-   :twitter-api (component/using (twitter-api/make-twitter-api config)
-                                 [:tweets-to-post-channel :posted-tweets-channel])
+   :twitter-api-poster (twitter-api/make-twitter-api-poster config)
+   :twitter-api (component/using (twitter-api/make-twitter-api)
+                                 [:tweets-to-post-channel :posted-tweets-channel
+                                  :twitter-api-poster])
    :worker (component/using
             (worker/make-worker)
             [:database :tweets-channel :scheduler-channel :tweets-to-post-channel :posted-tweets-channel])))
