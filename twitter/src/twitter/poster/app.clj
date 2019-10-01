@@ -17,7 +17,9 @@
             [twitter.poster.scheduler :as scheduler]
             [twitter.poster.twitter-api :as twitter-api]
             [twitter.poster.worker :as worker]
-            [twitter.poster.server :as server]))
+            [twitter.poster.server :as server]
+            ;; make sure all specs are loaded early in the process
+            [twitter.poster.spec :as spec]))
 
 ;;;; Problem: I wanna craft a tweet and schedule it to be posted later.
 ;;;;
@@ -36,7 +38,7 @@
    ;; TODO: why this doesn't fail during component/start when I don't pass the required dependencies??
    :server (component/using
             (server/make-server server-port)
-            [:tweets-channel])
+            [:tweets-channel :database])
    :twitter-api-poster (twitter-api/make-twitter-api-poster config)
    :twitter-api (component/using (twitter-api/make-twitter-api)
                                  [:tweets-to-post-channel :posted-tweets-channel
@@ -57,12 +59,13 @@
 
 (defn start-app
   ([]
-   (new-system
-    ;; TODO config
-    (merge
-     {:scheduler-interval-ms 10000
-      :server-port 8082}
-     (edn/read-string (slurp ".creds.edn")))))
+   (start-app 
+    (new-system
+     ;; TODO config
+     (merge
+      {:scheduler-interval-ms 10000
+       :server-port 8082}
+      (edn/read-string (slurp ".creds.edn"))))))
   ([system]
    (install-uncaught-exception-handler!)
    (component/start system)))

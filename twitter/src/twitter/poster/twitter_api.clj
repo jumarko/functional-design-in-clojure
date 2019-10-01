@@ -12,7 +12,11 @@
 (defprotocol TwitterApiPoster
   "A simple protocol for posting tweets via Twitter API.
   Used also for faking the real twitter API in integration tests - see `twitter.poster.app-test`."
-  (post-tweet [this status-text] "Posts given tweet using provided credentials to authenticate against the API."))
+  (post-tweet [this status-text]
+    "Posts given tweet using provided credentials to authenticate against the API.
+    Should return tweet response data, in particular the `id_str` key is expected to contain an ID
+    assigned by Twitter.
+    This ID is later used to distinguish which tweets have already been posted and which not (in worker.clj)."))
 
 ;; https://github.com/chbrown/twttr#example
 (s/def ::twitter-creds (s/keys :req-un [::consumer-key ::consumer-secret ::user-token ::user-token-secret]))
@@ -29,8 +33,10 @@
 ;; In particular, "Status is a duplicate" is an interesting error response:
 ;;   :status 403,
 ;;   :body {:errors [{:code 187, :message "Status is a duplicate."}]}}
+(s/def ::api-poster #(satisfies? TwitterApiPoster %))
 (s/fdef process-tweet
-  :args (s/cat :config ::twitter-creds :tweet :tweet/tweet))
+  :args (s/cat :api-poster ::api-poster
+               :tweet :tweet/tweet))
 (defn- process-tweet [api-poster {:tweet/keys [id text] :as tweet}]
   (log/info "Posting tweet to twitter: " tweet)
   (try

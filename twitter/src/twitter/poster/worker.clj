@@ -12,19 +12,17 @@
   However, this doesn't seem to be necessary right now since the component should still be
   arguably simple."
   (:require [clojure.core.async :as a]
-            [clojure.set :as set]
             [clojure.tools.logging :as log]
             [com.stuartsierra.component :as component]
-            [next.jdbc.sql :as sql]))
+            [next.jdbc.sql :as sql]
+            [twitter.poster.date-utils :as date-utils]))
 
-(defn- save-to-db [db {:tweet/keys [text post-at] :as tweet}]
+(defn- persist-tweet [db {:tweet/keys [text post-at] :as tweet}]
   (log/info "saving your tweet" tweet)
   (let [result (sql/insert! (db) "tweets" {:text text
-                                           :post_at (.toOffsetDateTime post-at)})]
-    (log/info "I saved your tweet: " result)))
-
-(defn- persist-tweet [db tweet]
-  (save-to-db db tweet))
+                                           :post_at (.toInstant post-at)})]
+    (log/info "I saved your tweet: " result))
+  )
 
 (defn- persist-tweets [tweets-channel db]
   (a/go-loop []
@@ -43,16 +41,17 @@
           (recur))
         (log/info "tweets-channel closed. Exit go-loop.")))))
 
-(defn- db-tweet->tweet [db-tweet]
-  (set/rename-keys db-tweet {:TWEETS/ID :tweet/id
-                                     :TWEETS/TWEET_ID :tweet/tweet-id
-                                     :TWEETS/TEXT :tweet/text
-                                     :TWEETS/POST_AT :tweet/post-at
-                                     :TWEETS/POSTED_AT :tweet/posted-at}))
+(defn db-tweet->tweet [{:TWEETS/keys [ID TWEET_ID TEXT POST_AT POSTED_AT]}]
+  (cond-> #:tweet{:id ID
+                  :text TEXT
+                  :post-at (date-utils/sql-timestamp->zoned-date-time POST_AT)}
+    TWEET_ID (assoc :tweet/tweet-id TWEET_ID)
+    POSTED_AT (assoc :tweet/posted-at POSTED_AT)))
+
 (defn- select-tweets-for-posting [db time-now]
   (let [db-tweets (sql/query
                   (db)
-                  ["select * from tweets where tweet_id is NULL and post_at < ? order by post_at"
+                  ["select * from tweets WHERE tweet_id is NULL and post_at < ? order by post_at"
                    time-now])]
     (mapv db-tweet->tweet db-tweets)))
 
@@ -127,6 +126,8 @@
    ((:database twitter.poster.app/my-app))
    ["select * from tweets order by post_at desc"])
 
+  
+
   (select-tweets-for-posting
    (:database twitter.poster.app/my-app)
    (.toInstant (java.time.ZonedDateTime/of 2019 9 6 10 39 0 0 java.time.ZoneOffset/UTC)))
@@ -140,6 +141,11 @@
   (next.jdbc/execute!
    ((:database twitter.poster.app/my-app))
    ["delete from tweets"])
+
+  ;; OR EVEN DROP THE TABLE!
+  (next.jdbc/execute!
+   ((:database twitter.poster.app/my-app))
+   ["drop table tweets"])
 
   ;; 
   )

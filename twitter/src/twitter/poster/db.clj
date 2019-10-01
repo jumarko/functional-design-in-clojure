@@ -32,13 +32,16 @@
   [db db-type]
   (try
     (jdbc/execute-one! (db)
-                       ;; notice that TIMESTAMP WITH TIME ZONE actually stores at least the TZ offset unlike postgresql
+                       ;; notice that storing `post_at` as TIMESTAMP is imprecise but it's good enough
+                       ;; for our case; to be bulletproof we would have to store the local date time
+                       ;; and timezone separately and reconstruct at the application level
+                       ;; see https://codeblog.jonskeet.uk/2019/03/27/storing-utc-is-not-a-silver-bullet/
                        [(str "
 create table tweets (
   id identity not null primary key,
   tweet_id varchar(128),
   text varchar(256),
-  post_at timestamp with time zone,
+  post_at timestamp,
   posted_at timestamp
 )")])
     (log/info "Created database and tweets table!")

@@ -31,4 +31,9 @@
                  ]
   :main ^:skip-aot twitter.poster.app
   :target-path "target/%s"
-  :profiles {:uberjar {:aot :all}})
+  :profiles {:uberjar {:aot :all}
+             :dev {:injections   [(require '[orchestra.spec.test :as stest])
+                                  (stest/instrument)
+                                  (.println System/err "Instrumented specs")]
+                   :dependencies [[orchestra "2019.02.06-1"]]}})
+

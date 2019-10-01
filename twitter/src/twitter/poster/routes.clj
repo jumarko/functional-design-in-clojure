@@ -1,10 +1,10 @@
 (ns twitter.poster.routes
   (:require [clojure.core.async :as a]
             [clojure.spec.alpha :as s]
-            [compojure.core :refer [POST routes]]
-            ;; load specs to be able to use them for API validations
-            [twitter.poster.spec]
-            ))
+            [compojure.core :refer [GET POST routes context]]
+            [next.jdbc.sql :as sql]
+            [twitter.poster.worker :as worker]
+            [twitter.poster.date-utils :as date-utils]))
 
 ;;; TODO 
 
@@ -29,6 +29,21 @@
   ;;
   )
 
+(defn- get-tweets [db]
+  (let [db-tweets (sql/query
+                   (db)
+                   ["select * from tweets order by post_at desc"])
+        ;; cheshire doesn't know how to convert ZonedDateTime to JSON so we need to actually
+        ;; convert it to Instant
+        tweets (mapv (fn [tweet]
+                       (-> tweet
+                           worker/db-tweet->tweet
+                           (update :tweet/post-at date-utils/zoned-date-time->date)))
+                     db-tweets)]
+    (prn "DEBUG:: tweets " tweets)
+    {:status 200
+     :body tweets
+     :headers {"Content-Type" "application/json"}}))
 
 (defn- schedule-tweet [tweets-channel request]
   ;; TODO validate tweet API request data, especially `post-at`
@@ -44,16 +59,33 @@
       {:status 400
        :body (str "Bad data: " (s/explain-str :tweet/tweet transformed-tweet))}
 
-      ;; backpressure? - blocking unless there's some space in the buffer??
-      ;; TODO: which version of 'put' use?
-      ;; is it ok to block the request when the channel buffer is full? ('backpressure' ?)
-      ;; Alternatively, we could use non-blocking put inside go and just acknowledge the HTTP POST
-      ;; operation without actually knowing it's finished
-      (do (a/>!! tweets-channel transformed-tweet)
-          {:status 201
-           :body {:status "scheduled"}
-           :headers {"Contet-Type" "application/json"}}))))
+      ;; backpressure? - blocking unless there's some space in the buffer?
+      ;; Here we  use the non-blocking put inside and just "acknowledge" the HTTP POST operation
+      ;; without actually "scheduling" anything
+      ;; this will throw an assertion error if there are more than 1024 outstanding errors
+      ;; which is basically fine for our purpose -> client will get an error and he will need to slow down
+      (do
+        (a/>!! tweets-channel transformed-tweet)
+        {:status 202
+         :body {:state "accepted"}
+         :headers {"Contet-Type" "application/json"}}))))
 
-(defn make-routes [tweets-channel]
-  (routes (POST "/tweets" req (schedule-tweet tweets-channel req))))
+(defn make-routes [tweets-channel db]
+  (context "/tweets" []
+    (POST "/" req (schedule-tweet tweets-channel req))
+    (GET "/" req (get-tweets db))))
 
+
+(comment
+
+  (get-tweets (:database twitter.poster.app/my-app))
+  ;;=>
+  {:status 200,
+   :body
+   [#:tweet{:id 1,
+            :text "My First Tweet",
+            :post-at #inst "2019-09-06T09:40:00.000-00:00",
+            :tweet-id "1-duplicate"}],
+   :headers {"Content-Type" "application/json"}}
+
+ )
