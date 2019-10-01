@@ -1,7 +1,10 @@
 (ns twitter.poster.routes
   (:require [clojure.core.async :as a]
             [clojure.spec.alpha :as s]
-            [compojure.core :refer [POST routes]]))
+            [compojure.core :refer [POST routes]]
+            ;; load specs to be able to use them for API validations
+            [twitter.poster.spec]
+            ))
 
 ;;; TODO 
 
