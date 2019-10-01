@@ -96,15 +96,17 @@
      (uncaughtException [_ thread ex]
        (log/error ex "Uncaught exception on" (.getName thread))))))
 
-(defn start-app []
-  (install-uncaught-exception-handler!)
-  ;; TODO config
-  (component/start
+(defn start-app
+  ([]
    (new-system
+    ;; TODO config
     (merge
      {:scheduler-interval-ms 10000
       :server-port 8082}
-     (edn/read-string (slurp ".creds.edn"))))))
+     (edn/read-string (slurp ".creds.edn")))))
+  ([system]
+   (install-uncaught-exception-handler!)
+   (component/start system)))
 
 (defn stop-app [{:keys [tweets-channel scheduler-channel tweets-to-post-channel posted-tweets-channel]
                  :as app}]
