@@ -10,7 +10,7 @@
 ;; here I intentionally left out specs for simple attributes which are obvious
 ;; to experiment if they would bring some benefits or not
 (s/def :tweet/text (and string? (complement clojure.string/blank?)))
-(s/def :tweet/db-id int?)
+(s/def :tweet/id int?)
 (s/def :tweet/tweet-id string?) ; external Twitter ID
 (s/def :tweet/posted-at ::date-time)
 
@@ -21,6 +21,6 @@
 (s/def :tweet/tweet (s/keys :req [:tweet/text :tweet/post-at]
                                     ;; IDs and posted? are only filled once the tweet is posted
                                     ;; TODO: the disinction between db-id and tweet-it looks awkward
-                                    :opt [:tweet/db-id
+                                    :opt [:tweet/id
                                           :tweet/tweet-id
                                           :tweet/posted-at]))

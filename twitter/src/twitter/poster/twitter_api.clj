@@ -16,22 +16,38 @@
 (defn twitter-creds [config]
   (auth/map->UserCredentials config))
 
+(defn- status-is-duplicate-error? [response-errors-data]
+  (= 187
+     (-> response-errors-data first :code)))
+
 ;; TODO: where/how to handle errors?
 ;; In particular, "Status is a duplicate" is an interesting error response:
 ;;   :status 403,
 ;;   :body {:errors [{:code 187, :message "Status is a duplicate."}]}}
 (s/fdef post-tweet
   :args (s/cat :config ::twitter-creds :tweet :tweet/tweet))
-(defn- post-tweet [config {:tweet/keys [text] :as tweet}]
+(defn- post-tweet [config {:tweet/keys [id text] :as tweet}]
   (log/info "Posting tweet to twitter: " tweet)
-  (let [raw-tweet-data (api/statuses-update (twitter-creds config)
-                                            :params {:status text})
-        ;; _ (prn "DEBUG:: raw-tweet-data " raw-tweet-data)
-        posted-tweet (assoc tweet
-                            :tweet/tweet-id (:id_str raw-tweet-data)
-                            :tweet/posted-at (java.time.Instant/now))]
-    (log/info "tweet posted to twitter: " posted-tweet)
-    posted-tweet))
+  (try
+    (let [raw-tweet-data (api/statuses-update (twitter-creds config)
+                                              :params {:status text})
+          ;; _ (prn "DEBUG:: raw-tweet-data " raw-tweet-data)
+          posted-tweet (assoc tweet
+                              :tweet/tweet-id (:id_str raw-tweet-data)
+                              :tweet/posted-at (java.time.Instant/now))]
+      (log/info "tweet posted to twitter: " posted-tweet)
+      posted-tweet)
+    (catch Exception e
+      (let [response-errors (some-> (ex-data e) :body :errors)]
+        (if (status-is-duplicate-error? response-errors)
+          (do
+            (log/warn "Looks like the status has already been posted - got an error from the twitter api: "
+                      response-errors)
+            ;; just provide some fake external id to make sture we don't select the same tweet again
+            ;; (see `worker/select-tweets-for-posting`)
+            (assoc tweet :tweet/tweet-id (str id "-duplicate")))
+          ;; just rethrow and try again later
+          (throw e))))))
 
 ;; Perhaps place into "Fake" component used for development/testing?
 (defn- post-tweet-dummy [config tweet]

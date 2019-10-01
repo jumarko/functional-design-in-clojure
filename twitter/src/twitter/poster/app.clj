@@ -128,6 +128,8 @@
 
   (def my-app (start-app))
 
+  (stop-app my-app)
+
   (def my-app (restart my-app))
 
   ;; visualize the system
