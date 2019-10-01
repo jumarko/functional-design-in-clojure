@@ -8,60 +8,19 @@
 
   You can test with CURL
      curl -H 'Content-Type: application/json' -X POST -v localhost:8082/tweets -d '{\"text\" : \"My First Tweet\", \"post-at\": \"2019-09-06T11:40:00+02:00\"}'"
-  (:require [aleph.http :as http]
-            [clojure.core.async :as a]
+  (:require [clojure.core.async :as a]
             [clojure.edn :as edn]
             [clojure.tools.logging :as log]
             [com.stuartsierra.component :as component]
             [com.walmartlabs.system-viz :refer [visualize-system]]
-            [ring.middleware.json :as ring-json]
-            [ring.middleware.params :as ring-params]
             [twitter.poster.db :as db]
-            [twitter.poster.routes :as routes]
             [twitter.poster.scheduler :as scheduler]
             [twitter.poster.twitter-api :as twitter-api]
-            [twitter.poster.worker :as worker]))
+            [twitter.poster.worker :as worker]
+            [twitter.poster.server :as server]))
 
 ;;;; Problem: I wanna craft a tweet and schedule it to be posted later.
 ;;;;
-
-;;; Just specify the content:
-
-
-(defn- make-app [tweets-channel]
-  (-> (routes/make-routes tweets-channel)
-      ring-params/wrap-params
-      ;; could use `ring-json/wrap-json-params` too: https://github.com/ring-clojure/ring-json
-      (ring-json/wrap-json-body {:keywords? true})
-      ring-json/wrap-json-response))
-
-(defn stop-server [http-server]
-  (when http-server
-    (log/info "Stopping the server...")
-    (.close http-server)))
-
-(defn start-server [port tweets-channel]
-  (log/info "Starting the server...")
-  (let [server (http/start-server (make-app tweets-channel)
-                                  {:port port})]
-    (log/info "Server started.")
-    server))
-
-;; TODO: it seems that Server component is frequent enough
-;; that it could be part of reusable library of components
-;; -> check https://github.com/danielsz/system
-(defrecord Server [port http-server tweets-channel]
-  component/Lifecycle
-  (start [this]
-    (assoc this :http-server (start-server
-                              port
-                              tweets-channel)))
-  (stop [this]
-    (stop-server http-server)))
-
-(defn make-server [port]
-  ;; tweets-channel injected by the system (see core.clj)
-  (map->Server {:port port}))
 
 (defn new-system
   [{:keys [scheduler-interval-ms server-port] :as config}]
@@ -76,7 +35,7 @@
                [:scheduler-channel])
    ;; TODO: why this doesn't fail during component/start when I don't pass the required dependencies??
    :server (component/using
-            (make-server server-port)
+            (server/make-server server-port)
             [:tweets-channel])
    :twitter-api-poster (twitter-api/make-twitter-api-poster config)
    :twitter-api (component/using (twitter-api/make-twitter-api)
