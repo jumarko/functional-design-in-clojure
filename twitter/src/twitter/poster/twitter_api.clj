@@ -91,7 +91,8 @@
 (defrecord TwitterApi [config tweets-to-post-channel posted-tweets-channel]
   component/Lifecycle
   (start [this]
-    (process-tweets config tweets-to-post-channel posted-tweets-channel))
+    (process-tweets config tweets-to-post-channel posted-tweets-channel)
+    this)
   (stop [this]
     this))
 

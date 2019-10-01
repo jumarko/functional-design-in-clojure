@@ -132,7 +132,7 @@
 
   (def my-app (restart my-app))
 
-  ;; visualize the system
+  ;; visualize the system (generates new temp pdf file)
   (visualize-system my-app)
 
   ;; end comment
