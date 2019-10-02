@@ -15,7 +15,7 @@
 (s/def :tweet/tweet-id string?) ; external Twitter ID
 (s/def :tweet/posted-at ::zoned-date-time)
 
-(s/def :tweet/post-at ::date-time)
+(s/def :tweet/post-at ::zoned-date-time)
 
 ;; TODO: attributes like post-at are really specific to scheduling and not shared in all use cases
 ;; => maybe it should be separated and provided as a different param of `schedule-tweet` fn?
