@@ -1,6 +1,7 @@
 (ns twitter.poster.twitter-api
   "Twitter api component providing means how to post and fetch tweets.
-  Just a very simple wrapper around https://github.com/chbrown/twttr"
+  Uses https://github.com/chbrown/twttr under the hood.
+  See `process-tweet` for notes on error handling. "
   (:require [clojure.core.async :as a]
             [clojure.edn :as edn]
             [clojure.tools.logging :as log]
@@ -29,15 +30,17 @@
   (= 187
      (-> response-errors-data first :code)))
 
-;; TODO: where/how to handle errors?
-;; In particular, "Status is a duplicate" is an interesting error response:
-;;   :status 403,
-;;   :body {:errors [{:code 187, :message "Status is a duplicate."}]}}
 (s/def ::api-poster #(satisfies? TwitterApiPoster %))
 (s/fdef process-tweet
   :args (s/cat :api-poster ::api-poster
                :tweet :tweet/tweet))
-(defn- process-tweet [api-poster {:tweet/keys [id text] :as tweet}]
+(defn- process-tweet
+  "Tries to post given tweet.
+  If it fails due to the 'statu is a duplicate' error then treats this error as 'success'
+  and assign it artifical `tweet-id` by appending '-duplicate` to its DB id
+  so it's not scheduled for posting in the next round.
+  For other errors we just 'ignore' them; that means we try again in the next scheduler round."
+  [api-poster {:tweet/keys [id text] :as tweet}]
   (log/info "Posting tweet to twitter: " tweet)
   (try
     (let [raw-tweet-data (post-tweet api-poster text)
@@ -48,6 +51,9 @@
       (log/info "tweet posted to twitter: " posted-tweet)
       posted-tweet)
     (catch Exception e
+      ;; In particular, "Status is a duplicate" is an interesting error response:
+      ;;   :status 403,
+      ;;   :body {:errors [{:code 187, :message "Status is a duplicate."}]}}
       (let [response-errors (some-> (ex-data e) :body :errors)]
         (if (status-is-duplicate-error? response-errors)
           (do
@@ -59,9 +65,9 @@
           ;; just rethrow and try again later
           (throw e))))))
 
-(defn- process-tweets [api-poster tweets-channel posted-tweets-channel]
+(defn- process-tweets [api-poster tweets-to-post-channel posted-tweets-channel]
   (a/go-loop []
-    (let [tweet (a/<! tweets-channel)]
+    (let [tweet (a/<! tweets-to-post-channel)]
       (if tweet
         (do 
           (log/info "got tweet to be posted: " tweet)
@@ -72,7 +78,7 @@
               ;; => maybe just proper buffer sizes?
               (a/put! posted-tweets-channel posted-tweet)))
           (recur))
-        (log/info "tweets-channel closed. Exit go-loop.")))))
+        (log/info "tweets-to-post-channel closed. Exit go-loop.")))))
 
 (defn- twttr-post-tweet [creds status-text]
   (api/statuses-update creds :params {:status status-text}))

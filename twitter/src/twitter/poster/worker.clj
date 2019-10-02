@@ -57,7 +57,6 @@
 
 (defn update-posted-tweet
   [db {:tweet/keys [id tweet-id posted-at] :as posted-tweet}]
-  ;; TODO: update tweet in DB (tweet_id and posted_at (column to be added))
   (log/info "Saving posted tweet to DB: " posted-tweet)
   (let [result (sql/update! (db)
                             "tweets"
@@ -70,9 +69,11 @@
   "Given external tweet ID of posted tweets, it's now time
   to save this data in the DB so they don't get posted again.
 
-  TODO: it could happen that the thread doing the API post is actually too slow
+  NOTE: it could happen that the thread doing the API post is actually too slow
   and the next scheduler cycle will come before the DB is updated.
-  Shall we take care of that and prevent duplicate tweets to be posted?"
+  In that case we could end up with attempting to post the same tweet twice
+  however, this shouldn't be an issue in practice since Twitter doesn't allow us to post duplicate tweets
+  (see `twitter-api/process-tweet`)."
   [posted-tweets-channel db]
   (a/go-loop []
     (let [tweet (a/<! posted-tweets-channel)]
@@ -83,6 +84,8 @@
           (recur))
         (log/info "posted-tweets-channel closed. Exit go-loop.")))))
 
+;; Having this as a separate function is useful for debugging/tracing because it's executed
+;; in separate thread from inside the go-loop in the `post-tweets` function
 (defn- handle-process-tweets [db time-now]
   (let [tweets-to-post (select-tweets-for-posting db time-now)]
     (log/info "Tweets selected for posting: " tweets-to-post)
@@ -95,9 +98,9 @@
       (when time-now
         (a/thread
           (let [tweets-to-post (handle-process-tweets db time-now)]
-            ;; don't close the channel, just wait for another scheduler round
-            ;; TODO: what's the difference between using `a/onto-chan`
-            ;; and putting onto a channel manually one-by-one using `a/>!` ?
+            ;; NOTE: the channel is automatically closed by default when `onto-chan` completes
+            ;; -> we want to avoid that (thus passing `false` as the 3rd arg)
+            ;; because we wouldn't be able to process any more tweets otherwise
             (a/onto-chan tweets-to-post-channel tweets-to-post false)))
         (recur)))))
 

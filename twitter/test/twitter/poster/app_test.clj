@@ -25,6 +25,8 @@
   {:dbtype "h2:mem"
    :dbname (str "twitter_poster_h2_mem_" (UUID/randomUUID))})
 
+;; Note: sometimes is useful to use channels in mocked components for later examination
+;; -> suggested in the talk: Stuart Sierra - Components Just Enough Structure (https://youtu.be/13cmHf_kt-Q?t=1446)
 (defn fake-system
   "Create a dummy version of `app/new-system` using in-memory database and fake twitter-api.
   Runs a separate http server running on a special port dedicated to integration tests.

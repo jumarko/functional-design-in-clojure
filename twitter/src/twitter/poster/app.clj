@@ -6,6 +6,10 @@
   Stateful HTTP server running on port 8082 and listening for tweets to be scheduled
   via the `/tweets` endpoint (POST).
 
+  See https://github.com/seancorfield/usermanager-example/blob/master/src/usermanager/main.clj
+  as an example.
+  Also useful to checkout Stuart Sierra's talk 'Components Just Enough Structure'.
+
   You can test with CURL
      curl -H 'Content-Type: application/json' -X POST -v localhost:8082/tweets -d '{\"text\" : \"My First Tweet\", \"post-at\": \"2019-09-06T11:40:00+02:00\"}'"
   (:require [clojure.core.async :as a]
