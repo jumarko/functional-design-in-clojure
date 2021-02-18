@@ -1,12 +1,10 @@
-(ns twitter.processor
+(ns twitter.fetcher.processor
   "Processor is a terrible name but this namespace capture the never-ending process of
   fetching tweets (via `twitter.api`) and printing them into console.
   The whole process then sleeps and is repeated over and over again,
   possibly with an updated search string."
-  (:require
-
-   [clojure.repl :refer [pst]]
-   [twitter.api :as api]))
+  (:require [clojure.repl :refer [pst]]
+            [twitter.fetcher.api :as api]))
 
 (defn- search [creds query]
   (try

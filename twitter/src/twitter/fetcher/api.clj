@@ -1,4 +1,4 @@
-(ns twitter.api
+(ns twitter.fetcher.api
   "Fetches data from twitter.
   We use standard API which returns tweets only for the past 7 days
   and doesn't guarantee completeness.
@@ -11,12 +11,27 @@
   and thus the client only needs to pass credentials (api key).
   This simplified the API and clients don't need to maintain authentication state at all.
 
+  Application-only vs Application-user authentication:
+  ---------------------------------------------------
+  See https://developer.twitter.com/en/docs/basics/authentication/overview/oauth
+
+  The problem with Twitter API is that using the simplified OAuth 2 authentication
+  (that is getting an OAuth token by posting to /oauth2/token endpoint)
+  the retrieved access token can be used only for read-only access to public information.
+
+  If you want to execute actions on behalf of a user (such as 'posting tweets')
+  you need to use 3-ledged-OAuth process: https://developer.twitter.com/en/docs/basics/authentication/overview/3-legged-oauth
+  THEREFORE, WE DON'T TRY TO IMPLEMENT IT -> we use https://github.com/chbrown/twttr instead.
+  This is done in twitter_api.clj, not this ns which is intended only for _fetching_.
+
+
   We use Aleph as http client: https://github.com/ztellman/aleph
   - check https://github.com/dakrone/clj-http for supported request map params.
 
   See Twitter docs:
   - https://developer.twitter.com/en/docs/basics/getting-started
-  - https://developer.twitter.com/en/docs/tweets/search/overview/standard"
+  - https://developer.twitter.com/en/docs/tweets/search/overview/standard
+  - Authentication: https://developer.twitter.com/en/docs/basics/authentication/overview/oauth"
   (:require
    [aleph.http :as http]
    [byte-streams :as bs]
@@ -26,22 +41,22 @@
 ;; this is a map from credentials to oauth tokens
 (defonce ^:private credentials-cache (atom {}))
 
-(defn- cached-auth-state [creds]
+(defn- cached-auth-state
+  [creds]
   (get @credentials-cache creds))
 
-(defn- save-auth-state [{:keys [credentials] :as auth-state}]
+(defn- save-auth-state!
+  [{:keys [credentials] :as auth-state}]
   (swap! credentials-cache assoc credentials auth-state))
 
 (s/def ::credentials (s/keys :req-un [::api-key ::api-secret]))
 (s/def ::auth-state (s/keys ::req-un [::token ::credentials]))
 (s/def ::response-data some?)
 
-;; credentials in special local-only file for now
-(def twitter-api-root-url "https://api.twitter.com")
-(def twitter-api-url (str twitter-api-root-url "/1.1"))
+(def ^:dynamic twitter-api-root-url "https://api.twitter.com")
 
 (defn api-url [relative-url]
-  (str twitter-api-url relative-url))
+  (str twitter-api-root-url "/1.1" relative-url))
 
 (defn response-body
   "Returns response body, counts on using `:as :json` in the request map"
@@ -59,20 +74,29 @@
         (throw (ex-info (ex-message e) (-> e ex-data (assoc :body body-text))))
         (throw e)))))
 
-(defn fetch
-  "Fetches data from given api resource (`path`)
-  by using given OAuth token and adding extra `request-options`.
-  This is supposed to be used internally - prefer `fetch-retry-auth` over this function."
+(defn api-request
+  "Fetches or posts data from/to given api resource (`path`)
+  by using given OAuth token and adding extra `request-options` which should contain suitable
+  request `:method` (most likely `:get` or `:post`).
+  For POSTs, the `request-options` should contain the `:form-params` param which will be sent
+  as a seralized JSON in the request body.
+  This function is supposed to be used internally - prefer high-level fns like `search` and `post-tweet`
+  if available."
   [auth-token path request-options]
   (handle-errors
-   (fn fetch-fn [] 
-     (-> (http/get (api-url path)
-                   (merge 
-                    {:oauth-token auth-token
-                     :as :json}
-                    request-options)) deref
+   (fn fetch-fn []
+     (-> (http/request (merge
+                        {:url (api-url path)
+                         :oauth-token auth-token
+                         :as :json
+                         :content-type :json}
+                        request-options))
+         deref
          response-body))))
 
+
+;; TODO: this was an attempt to make a "constructor" but we don't use any matching "selectors"
+;; just :keys destructuring everywhere...
 (defn- make-auth-state [token creds]
   {:token token :credentials creds})
 
@@ -83,7 +107,7 @@
   "Authenticates using consumer's api key and secret
   and returns authentication auth-state containing OAuth token.
   Saves new auth-state into authentication cache to be reused and re-authenticated only when necessary.
-  See `save-auth-state`.
+  See `save-auth-state!`.
   See https://developer.twitter.com/en/docs/basics/authentication/api-reference/token.html"
   [credentials]
   (let [new-auth-state
@@ -97,28 +121,24 @@
              (if-let [token (:access_token response-body)]
                (make-auth-state token credentials)
                (throw (ex-info "Unexpected response - missing access token" {:body response-body}))))))]
-    (save-auth-state new-auth-state)))
+    (save-auth-state! new-auth-state)
+    new-auth-state))
 
-(s/fdef fetch-retry-auth
-  :args (s/cat :auth-state ::auth-state
-               :path string?
-               :request-options map?)
-  :ret ::response-data)
-(defn fetch-retry-auth
-  "Similar to `fetch` but retries on authentication errors.
-  Gives up after a single retry since that's very likely another issue with the call
-  or permenant authentication error."
-  ;; I guess it wasn't mentioned in the podcast but `:credentials` are necessary
-  ;; to be able to re-authenticate at any point
-  [creds path request-options]
+(defn- with-retry-auth
+  "Calls given `api-fn` with access token retrieved from credentials cache (authenticating if necessary),
+  `path`, and `request-options`.
+  Re-authenticates if the call fails to make sure expired access token doesn't break the functionality."
+  [creds api-fn path request-options]
   (let [{:keys [token credentials]} (or (cached-auth-state creds) (authenticate! creds))]
     (try
-      (fetch token path request-options)
+      (api-fn token path request-options)
       (catch ExceptionInfo e
         (println "Got Exception" e)
         (println "=> Reauthenticating")
         (let [{:keys [token]} (authenticate! credentials)]
-          (fetch token path request-options))))))
+          (api-fn token path request-options))))))
+
+(authenticate! { :api-key "vloWHzR8piUvGYkmPXRilIz6b", :api-secret "a6OtwU6PAMdAyUhK5vtJBTQoVLOK9P7AAzuH81fxL7Q19Un0v2" })
 
 (s/def :twitter/tweet (s/keys :req [:tweet/id :tweet/text :user/name]))
 
@@ -143,17 +163,16 @@
   Reauthenticates automatically if an OAuth token is expired.
   See https://developer.twitter.com/en/docs/tweets/search/api-reference/get-search-tweets.html"
   [creds query]
-  (let [raw-tweets (fetch-retry-auth creds "/search/tweets.json" {:query-params {:q  query}})
+  (let [raw-tweets (with-retry-auth creds api-request "/search/tweets.json"
+                     {:method :get :query-params {:q  query}})
         tweets (raw->tweets raw-tweets)]
     tweets))
 
 (comment
 
-  (def twitter-creds (edn/read-string (slurp ".creds.edn")))
+  (def twitter-creds (clojure.edn/read-string (slurp ".creds.edn")))
 
-  (def my-auth-state (authenticate! twitter-creds))
-
-  (time (search my-auth-state "clojure"))
+  (time (search twitter-creds "clojure"))
 
 
 ;; end of comment

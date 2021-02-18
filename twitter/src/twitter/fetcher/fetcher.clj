@@ -1,12 +1,11 @@
-(ns twitter.fetcher
+(ns twitter.fetcher.fetcher
   "Component that pools for available tweets based on the query retrieved
   from core.async channel and prints them out to standard output.
   Uses twitter api to fetch tweets."
-  (:require
-   [clojure.edn :as edn]
-   [clojure.core.async :as async]
-   [com.stuartsierra.component :as component]
-   [twitter.processor :as processor]))
+  (:require [clojure.core.async :as async]
+            [clojure.edn :as edn]
+            [com.stuartsierra.component :as component]
+            [twitter.fetcher.processor :as processor]))
 
 ;; TODO: externalize configuration completely
 (def tweets-fetch-interval 15000)
